@@ -1,12 +1,15 @@
 const express = require('express');
+const config = require('./config/config');
+const logger = require('./middleware/logger');
 const app = express();
-const PORT = 3000;
 
+app.use(logger);
 app.use(express.json());
+
 app.get('/', (req, res) => {
     res.json({ message: 'Mosalinx backend is running!' });
 });
 
-app.listen(PORT, () => {
-    console.log(`Mosalinx backend is running on port ${PORT}`);
+app.listen(config.port, () => {
+    console.log(`Mosalinx backend is running on port ${config.port}`);
 });
