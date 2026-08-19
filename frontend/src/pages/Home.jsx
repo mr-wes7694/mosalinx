@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import logo from '../assets/Mosalinx_logo_v1.png'
+import logo from '../assets/Mosalinx_logo.png'
 import './Home.css'
 
 const RINGS = [
