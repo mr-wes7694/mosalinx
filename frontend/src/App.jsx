@@ -3,6 +3,7 @@ import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import Signup from './pages/Signup.jsx'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="/signup" element={<Signup />} />
     </Routes>
   )
 }
