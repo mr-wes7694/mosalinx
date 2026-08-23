@@ -13,7 +13,7 @@ function Login() {
         setMessage("");
         try {
             if (isRegistering) {
-                await registerUser(email, password);
+                await registerUser(email, password, email.split("@")[0]);
                 setMessage("Registration successful! You can now log in.");
             } else {
                 await loginUser(email, password);
