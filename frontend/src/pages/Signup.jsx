@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { loginUser } from '../services/authService'
-import './Login.css'
+import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { auth } from '../firebase'
+import './Signup.css'
 
-function Login() {
+function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const navigate = useNavigate()
@@ -13,10 +15,21 @@ function Login() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
-      await loginUser(email, password)
+      await createUserWithEmailAndPassword(auth, email, password)
       navigate('/dashboard')
     } catch (err) {
       setError(mapFirebaseError(err.code))
@@ -28,7 +41,7 @@ function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1 className="auth-title">Log in</h1>
+        <h1 className="auth-title">Create your account</h1>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="auth-label" htmlFor="email">Email</label>
@@ -50,18 +63,31 @@ function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            autoComplete="current-password"
+            autoComplete="new-password"
+            minLength={6}
+          />
+
+          <label className="auth-label" htmlFor="confirmPassword">Confirm password</label>
+          <input
+            id="confirmPassword"
+            type="password"
+            className="auth-input"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            autoComplete="new-password"
+            minLength={6}
           />
 
           {error && <p className="auth-error">{error}</p>}
 
           <button type="submit" className="auth-submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Logging in...' : 'Log in'}
+            {isSubmitting ? 'Creating account…' : 'Sign up'}
           </button>
         </form>
 
         <p className="auth-switch">
-          Don't have an account? <Link to="/signup">Sign up!</Link>
+          Already have an account? <Link to="/login">Log in!</Link>
         </p>
       </div>
     </div>
@@ -70,17 +96,15 @@ function Login() {
 
 function mapFirebaseError(code) {
   switch (code) {
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists.'
     case 'auth/invalid-email':
       return 'That email address looks invalid.'
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-    case 'auth/invalid-credential':
-      return 'Incorrect email or password.'
-    case 'auth/too-many-requests':
-      return 'Too many attempts. Try again in a moment.'
+    case 'auth/weak-password':
+      return 'Password is too weak. Use at least 6 characters.'
     default:
       return 'Something went wrong. Please try again.'
   }
 }
 
-export default Login
+export default Signup

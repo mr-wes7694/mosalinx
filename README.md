@@ -8,9 +8,26 @@ The name **Mosalinx** combines **Mosaic** and **Links**, representing the idea o
 
 ---
 
+## Table of Contents
+
+- [Features](#features)
+- [Technology Stack](#technology-stack)
+- [Repository Structure](#repository-structure)
+- [Installation](#installation)
+- [Database Setup](#database-setup)
+- [Environment Configuration](#environment-configuration)
+- [Development Preparation](#development-preparation)
+- [Git Workflow](#git-workflow)
+- [Contributors](#contributors)
+- [Project Status](#project-status)
+- [License](#license)
+- [About the Project](#about-the-project)
+
+---
+
 ## Features
 
-Mosalinx is being developed around a set of integrated collaboration and project-management tools for independent creators and small creative teams.
+Mosalinx is being developed around a set of integrated collaboration and project-management tools for independent creators and small creative teams. The features below represent the project's planned functionality and are being implemented incrementally throughout development.
 
 ### Project Management
 - Create and manage projects
@@ -33,7 +50,7 @@ Mosalinx is being developed around a set of integrated collaboration and project
 - Support creative brainstorming and content development
 - Save useful ideas within the project workflow
 
-### Planned Analytics
+### Analytics
 - Provide visibility into project activity and progress
 - Help teams understand how their projects are developing over time
 
@@ -48,7 +65,7 @@ Mosalinx is being developed around a set of integrated collaboration and project
 
 ### Backend
 - Node.js
-- Express.js
+- Express
 
 ### Database
 - MySQL
@@ -102,11 +119,17 @@ Mosalinx/
 
 ---
 
-## Installation
+## Installation and Setup
 
-> **Note:** Mosalinx is currently under active development and is not yet available as a production release. These instructions are intended for running the current development build locally.
+### End-User Installation
 
-### Prerequisites
+Mosalinx is currently in active development and is not yet available as a production release or end-user installation.
+
+The setup instructions below are intended for developers and contributors who want to run the current development build locally.
+
+### Developer Setup
+
+#### Prerequisites
 
 Before setting up Mosalinx, install:
 
@@ -115,16 +138,16 @@ Before setting up Mosalinx, install:
 - MySQL Server
 - MySQL Workbench or another MySQL client
 
-Additional configuration may be required as Firebase and OpenAI integrations are implemented.
+Additional configuration is required for services such as Firebase Authentication. Other environment variables may be added as additional integrations are implemented.
 
-### Clone the Repository
+#### Clone the Repository
 
 ```bash
 git clone https://github.com/mr-wes7694/mosalinx.git
 cd mosalinx
 ```
 
-### Frontend Setup
+#### Frontend Setup
 
 Navigate to the frontend directory:
 
@@ -144,7 +167,7 @@ Start the Vite development server:
 npm run dev
 ```
 
-### Backend Setup
+#### Backend Setup
 
 From the project root, navigate to the backend directory:
 
@@ -158,7 +181,13 @@ Install the backend dependencies:
 npm install
 ```
 
-Backend startup instructions will be updated as the Express application foundation is completed.
+Start the Express backend:
+
+```bash
+node server.js
+```
+
+The backend verifies the local MySQL database connection during startup and runs on the port configured in the backend environment variables.
 
 ---
 
@@ -215,13 +244,13 @@ DB_USER=mosalinx_dev
 DB_PASSWORD=your_local_database_password
 ```
 
-Additional environment variables will be added as authentication, Firebase, OpenAI, and other integrations are implemented.
+Additional environment variables may be added as Firebase, OpenAI, file storage, and other integrations continue to be implemented.
 
 > **Important:** Never commit `.env` files, passwords, API keys, authentication secrets, or other sensitive credentials to source control.
 
 ---
 
-## Development Setup
+## Development Preparation
 
 New contributors should begin from the latest version of the `main` branch.
 
@@ -242,7 +271,7 @@ Documentation-only work may use a documentation branch:
 git checkout -b docs/your-documentation-update
 ```
 
-Install the required dependencies for the area of the application being developed and configure any necessary local environment variables.
+After completing the local developer setup, ensure the required dependencies and environment configuration for the area of the application being developed are current.
 
 Before beginning development, verify that:
 
@@ -257,7 +286,7 @@ Before beginning development, verify that:
 
 ## Git Workflow
 
-Mosalinx uses a feature-branch workflow to keep development work isolated and the `main` branch stable.
+Mosalinx uses a feature-branch workflow to manage changes from development through review and integration into the `main` branch.
 
 1. Pull the latest version of `main`.
 2. Create a new branch for the feature, task, fix, or documentation update.
@@ -265,7 +294,7 @@ Mosalinx uses a feature-branch workflow to keep development work isolated and th
 4. Commit changes using descriptive commit messages.
 5. Push the branch to GitHub.
 6. Open a pull request into `main`.
-7. Review and verify the changes before merging.
+7. Review and verify the changes through the pull request before merging.
 8. Begin new work from the newly updated `main` branch.
 
 Example:
@@ -282,9 +311,37 @@ This workflow allows team members to work independently while reducing conflicts
 
 ## Contributors
 
-- Veronica Johnson
-- Wesley Filion
-- Lesly Martinez
+### Veronica Johnson
+**Project Planning, Database, Integration, and Documentation**
+
+- Project planning, sprint organization, and Jira management
+- Database schema design and MySQL configuration
+- Development environment and repository documentation
+- Authentication and application integration
+- Testing and integration support
+- Project documentation and README maintenance
+- Mosalinx branding direction and original logo concept
+
+### Wesley Filion
+**Frontend Development and UI/UX**
+
+- Frontend application development with React and Vite
+- UI implementation and application navigation
+- Login, registration, and dashboard interface development
+- Figma prototyping and interface design
+- Frontend authentication integration
+- General frontend development and testing
+- Logo refinement and frontend brand implementation
+
+### Lesly Martinez
+**Backend Development and Mascot Design**
+
+- Node.js and Express backend development
+- Backend routes, controllers, and application logic
+- Database/backend integration
+- User and authentication-related backend functionality
+- Mosi mascot and character design
+- Analytics interface concepts and visual design support
 
 Mosalinx is being developed as part of the Full Sail University Bachelor of Science in Computer Science Capstone Project.
 
@@ -294,25 +351,27 @@ Mosalinx is being developed as part of the Full Sail University Bachelor of Scie
 
 **Status: Active Development / Pre-Alpha**
 
-Mosalinx is currently under active development. The project has moved from initial planning and design into implementation of its core application foundation.
+Mosalinx is currently under active development. The project has progressed from its initial planning and design phase into implementation and integration of its core application foundation.
 
 Current development includes:
 
-- React / Vite frontend foundation
+- React / Vite frontend foundation and application routing
 - Node.js / Express backend foundation
-- MySQL database implementation
+- MySQL database schema and local database connectivity
 - Environment and development configuration
-- Authentication integration
-- Core dashboard and Project Workspace functionality
-- Integration and testing
+- Firebase Authentication foundation and authentication state management
+- Protected application routing
+- Login, registration, and dashboard interface development
+- Resource management and file-storage integration
+- Ongoing integration and testing
 
-Features and documentation may change as development continues.
+Features and documentation will continue to evolve as development progresses.
 
 ---
 
 ## License
 
-This project is licensed under the terms provided in the repository's [`LICENSE`](LICENSE) file.
+This project is licensed under the **MIT License**. See the repository's [`LICENSE`](LICENSE) file for the full license terms.
 
 ---
 
