@@ -1,5 +1,6 @@
 import {
     createUserWithEmailAndPassword,
+    deleteUser,
     signInWithEmailAndPassword,
     signOut,
 } from "firebase/auth";
@@ -15,24 +16,40 @@ export const registerUser = async (email, password, displayName) => {
 
     const user = userCredential.user;
 
-    const response = await fetch("http://localhost:3000/api/users/register", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            firebaseUid: user.uid,
-            displayName: displayName || email.split("@")[0],
-            email: user.email,
-        }),
-    });
+    try {
+        const response = await fetch("http://localhost:3000/api/users/register", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                firebaseUid: user.uid,
+                displayName: displayName || email.split("@")[0],
+                email: user.email,
+            }),
+        });
 
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to register user with backend");
+        if (!response.ok) {
+            const errorData = await response.json();
+
+            throw new Error(
+                errorData.message || "Failed to register user with backend"
+            );
+        }
+
+        return response.json();
+    } catch (error) {
+        try {
+            await deleteUser(user);
+        } catch (cleanupError) {
+            console.error(
+                "Failed to clean up Firebase user after backend registration failure:",
+                cleanupError
+            );
+        }
+
+        throw error;
     }
-
-    return response.json();
 };
 
 // Sign in an existing user

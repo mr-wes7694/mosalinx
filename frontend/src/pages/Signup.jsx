@@ -31,7 +31,11 @@ function Signup() {
       await registerUser(email, password)
       navigate('/dashboard')
     } catch (err) {
-      setError(mapFirebaseError(err.code))
+      if (err.code) {
+        setError(mapFirebaseError(err.code))
+      } else {
+        setError(err.message || 'Something went wrong. Please try again.')
+      }
     } finally {
       setIsSubmitting(false)
     }
