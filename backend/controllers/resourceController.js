@@ -1,7 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 
-const { createResource } = require('../models/resourceModel');
+const {
+    createResource,
+    findResourceById,
+    findResourcesByProject,
+} = require('../models/resourceModel');
 
 const uploadResource = async (req, res) => {
     const { projectId, uploadedBy, category } = req.body;
@@ -58,6 +62,62 @@ const uploadResource = async (req, res) => {
     }
 };
 
+const getResourcesByProject = async (req, res) => {
+    const { projectId } = req.params;
+
+    if (!projectId) {
+        return res.status(400).json({
+            message: 'projectId is required.',
+        });
+    }
+
+    try {
+        const resources = await findResourcesByProject(projectId);
+
+        return res.status(200).json({
+            resources,
+        });
+    } catch (error) {
+        console.error('Error retrieving resources:', error);
+
+        return res.status(500).json({
+            message: 'Failed to retrieve resources.',
+        });
+    }
+};
+
+const getResourceById = async (req, res) => {
+    const { resourceId } = req.params;
+
+    if (!resourceId) {
+        return res.status(400).json({
+            message: 'resourceId is required.',
+        });
+    }
+
+    try {
+        const resource = await findResourceById(resourceId);
+
+        if (!resource) {
+            return res.status(404).json({
+                message: 'Resource not found.',
+            });
+        }
+
+        return res.status(200).json({
+            resource,
+        });
+    } catch (error) {
+        console.error('Error retrieving resource:', error);
+
+        return res.status(500).json({
+            message: 'Failed to retrieve resource.',
+        });
+    }
+};
+
 module.exports = {
     uploadResource,
+    getResourcesByProject,
+    getResourceById,
 };
