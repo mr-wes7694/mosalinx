@@ -1,0 +1,3 @@
+ALTER TABLE users
+ADD COLUMN bio VARCHAR(500) NULL
+AFTER profile_image_url;
