@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '../firebase'
+import { loginUser } from '../services/authService'
 import './Login.css'
 
 function Login() {
@@ -17,7 +16,7 @@ function Login() {
     setIsSubmitting(true)
 
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      await loginUser(email, password)
       navigate('/dashboard')
     } catch (err) {
       setError(mapFirebaseError(err.code))
@@ -57,7 +56,7 @@ function Login() {
           {error && <p className="auth-error">{error}</p>}
 
           <button type="submit" className="auth-submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Logging in…' : 'Log in'}
+            {isSubmitting ? 'Logging in...' : 'Log in'}
           </button>
         </form>
 
