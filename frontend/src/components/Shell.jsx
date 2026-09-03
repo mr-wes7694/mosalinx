@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import './Shell.css'
+import Sidebar from './Sidebar.jsx'
 
 const APP_NAMES = {
   '/app/workspaces': 'Project Workspaces',
