@@ -10,6 +10,7 @@ const APP_NAMES = {
 
 function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const sidebarPosition = 'left' // To be developed with settings
   const location = useLocation()
   const currentAppName = APP_NAMES[location.pathname] ?? 'Mosalinx'
 
@@ -50,14 +51,14 @@ function Shell() {
         </div>
       </header>
 
-      <div className="shell-body">
-        {sidebarOpen && <nav className="shell-sidebar">{/* sidebar content placeholder */}</nav>}
-        <main className="shell-content">
-          <Outlet />
-        </main>
+        <div className={`shell-body shell-body--${sidebarPosition}`}>
+          {sidebarOpen && <Sidebar position={sidebarPosition} />}
+          <main className="shell-content">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
-  )
+    )
 }
 
 export default Shell
