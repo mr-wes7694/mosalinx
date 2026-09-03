@@ -76,15 +76,34 @@
   overflow: hidden;
 }
 
-.shell-sidebar {
-  width: 220px;
-  flex-shrink: 0;
-  background: #ffffff;
-  border-right: 1px solid rgba(0, 0, 0, 0.08);
+.shell-body--left {
+  flex-direction: row;
 }
 
-.shell-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 32px;
+.shell-body--right {
+  flex-direction: row;
+}
+
+.shell-body--right .sidebar {
+  order: 1;
+}
+
+.shell-body--right .shell-content {
+  order: 0;
+}
+
+.shell-body--top {
+  flex-direction: column;
+}
+
+.shell-body--bottom {
+  flex-direction: column;
+}
+
+.shell-body--bottom .sidebar {
+  order: 1;
+}
+
+.shell-body--bottom .shell-content {
+  order: 0;
 }
