@@ -7,9 +7,11 @@ const {
     getResourceById,
 } = require('../controllers/resourceController');
 
+const { verifyFirebaseToken } = require('../middleware');
+
 const router = express.Router();
 
-// Store uploaded files in memory before saving them locally.
+// Store uploaded files in memory before sending them to Firebase Storage.
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -18,7 +20,13 @@ const upload = multer({
 });
 
 // Upload a new resource.
-router.post('/upload', upload.single('file'), uploadResource);
+// Firebase authentication runs before the file upload and controller.
+router.post(
+    '/upload',
+    verifyFirebaseToken,
+    upload.single('file'),
+    uploadResource
+);
 
 // Get all resources belonging to a project.
 router.get('/project/:projectId', getResourcesByProject);

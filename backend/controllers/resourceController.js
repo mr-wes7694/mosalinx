@@ -1,53 +1,100 @@
-const path = require('path');
-const fs = require('fs');
-
 const {
     createResource,
+    updateResourceStoragePath,
+    deleteResourceById,
     findResourceById,
     findResourcesByProject,
 } = require('../models/resourceModel');
 
-const uploadResource = async (req, res) => {
-    const { projectId, uploadedBy, category } = req.body;
+const { findUserByFirebaseUid } = require('../models/userModel');
+const { storageBucket } = require('../config/firebaseAdmin');
+const { buildResourceStoragePath } = require('../utils/storage');
 
-    if (!projectId || !uploadedBy) {
-        return res.status(400).json({
-            message: 'projectId and uploadedBy are required.',
+const uploadResource = async (req, res) => {
+    // Multer provides req.body for multipart/form-data.
+    // Use an empty object if the body is missing.
+    const body = req.body || {};
+
+    const { projectId, category } = body;
+
+    // The Firebase middleware should provide the authenticated user.
+    const firebaseUid = req.user?.uid;
+
+    // Validate the authenticated user.
+    if (!firebaseUid) {
+        return res.status(401).json({
+            message: 'Unauthorized.',
         });
     }
 
+    // Validate the project ID.
+    if (!projectId) {
+        return res.status(400).json({
+            message: 'projectId is required.',
+        });
+    }
+
+    // Validate the uploaded file.
     if (!req.file) {
         return res.status(400).json({
             message: 'A file is required.',
         });
     }
 
-    const file = req.file;
+    let resource = null;
+    let firebaseFile = null;
 
     try {
-        const uploadDirectory = path.join(__dirname, '..', 'uploads');
+        // Find the MySQL user connected to the authenticated Firebase account.
+        const user = await findUserByFirebaseUid(firebaseUid);
 
-        if (!fs.existsSync(uploadDirectory)) {
-            fs.mkdirSync(uploadDirectory, { recursive: true });
+        if (!user) {
+            return res.status(404).json({
+                message: 'Authenticated user is not registered in the database.',
+            });
         }
 
-        const safeFileName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const uniqueFileName = Date.now() + '-' + safeFileName;
-        const filePath = path.join(uploadDirectory, uniqueFileName);
+        const file = req.file;
 
-        fs.writeFileSync(filePath, file.buffer);
+        // Create a temporary database record first so MySQL gives us
+        // the resource ID needed for the Firebase Storage path.
+        const temporaryStoragePath = 'pending/resource';
 
-        const storagePath = path.join('uploads', uniqueFileName).replace(/\\/g, '/');
-
-        const resource = await createResource(
+        resource = await createResource(
             projectId,
-            uploadedBy,
+            user.user_id,
             file.originalname,
             file.mimetype,
             file.size,
             category || null,
+            temporaryStoragePath
+        );
+
+        // Build the required Firebase Storage path.
+        const storagePath = buildResourceStoragePath(
+            projectId,
+            resource.resourceId,
+            file.originalname
+        );
+
+        // Create a Firebase Storage file reference.
+        firebaseFile = storageBucket.file(storagePath);
+
+        // Upload the file buffer to Firebase Storage.
+        await firebaseFile.save(file.buffer, {
+            metadata: {
+                contentType: file.mimetype,
+            },
+        });
+
+        // Save the actual Firebase Storage path in MySQL.
+        await updateResourceStoragePath(
+            resource.resourceId,
             storagePath
         );
+
+        // Return the completed resource information.
+        resource.storagePath = storagePath;
 
         return res.status(201).json({
             message: 'Resource uploaded successfully.',
@@ -55,6 +102,35 @@ const uploadResource = async (req, res) => {
         });
     } catch (error) {
         console.error('Error uploading resource:', error);
+
+        // If a database record was created but the upload failed,
+        // remove the incomplete resource record.
+        if (resource?.resourceId) {
+            try {
+                await deleteResourceById(resource.resourceId);
+            } catch (cleanupError) {
+                console.error(
+                    'Error cleaning up resource record:',
+                    cleanupError
+                );
+            }
+        }
+
+        // If the Firebase file was created but a later database
+        // operation failed, remove the Firebase file as well.
+        if (firebaseFile) {
+            try {
+                await firebaseFile.delete();
+            } catch (cleanupError) {
+                // Ignore "file not found" cleanup errors.
+                if (cleanupError.code !== 404) {
+                    console.error(
+                        'Error cleaning up Firebase file:',
+                        cleanupError
+                    );
+                }
+            }
+        }
 
         return res.status(500).json({
             message: 'Failed to upload resource.',

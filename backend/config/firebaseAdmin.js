@@ -1,28 +1,33 @@
-const { initializeApp, cert, getApps } = require('firebase-admin/app');
+const { initializeApp, getApps, applicationDefault } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
+const { getStorage } = require('firebase-admin/storage');
 const config = require('./config');
 
-// Verify that all required Firebase Admin credentials are available.
+// Verify that the required Firebase configuration is available.
 if (
     !config.firebase.projectId ||
-    !config.firebase.clientEmail ||
-    !config.firebase.privateKey
+    !config.firebase.storageBucket
 ) {
-    throw new Error('Missing Firebase Admin configuration');
+    throw new Error('Missing Firebase project or storage configuration');
 }
 
-// Initialize Firebase Admin once using the configured service account.
+// Initialize Firebase Admin once using the service account configured
+// through GOOGLE_APPLICATION_CREDENTIALS.
 const firebaseApp = getApps().length
     ? getApps()[0]
     : initializeApp({
-          credential: cert({
-              projectId: config.firebase.projectId,
-              clientEmail: config.firebase.clientEmail,
-              privateKey: config.firebase.privateKey,
-          }),
-      });
+        credential: applicationDefault(),
+        projectId: config.firebase.projectId,
+        storageBucket: config.firebase.storageBucket,
+    });
 
-// Create the Firebase Admin authentication service for backend token verification.
+// Create Firebase Authentication for backend token verification.
 const adminAuth = getAuth(firebaseApp);
 
-module.exports = adminAuth;
+// Create the Firebase Storage bucket using the same Firebase Admin app.
+const storageBucket = getStorage(firebaseApp).bucket();
+
+module.exports = {
+    adminAuth,
+    storageBucket,
+};

@@ -36,6 +36,21 @@ const createResource = async (
     };
 };
 
+// Update the Firebase Storage path after the MySQL resource ID is created.
+const updateResourceStoragePath = async (resourceId, storagePath) => {
+    const sql =
+        'UPDATE resources SET storage_path = ? WHERE resource_id = ?';
+
+    await pool.query(sql, [storagePath, resourceId]);
+};
+
+// Delete a resource record if the Firebase upload fails.
+const deleteResourceById = async (resourceId) => {
+    const sql = 'DELETE FROM resources WHERE resource_id = ?';
+
+    await pool.query(sql, [resourceId]);
+};
+
 const findResourceById = async (resourceId) => {
     const sql =
         'SELECT resource_id, project_id, uploaded_by, resource_name, ' +
@@ -60,6 +75,8 @@ const findResourcesByProject = async (projectId) => {
 
 module.exports = {
     createResource,
+    updateResourceStoragePath,
+    deleteResourceById,
     findResourceById,
     findResourcesByProject,
 };
