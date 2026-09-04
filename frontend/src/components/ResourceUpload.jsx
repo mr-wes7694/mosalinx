@@ -1,23 +1,55 @@
 import { useState } from "react";
 import "./ResourceUpload.css";
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 function ResourceUpload() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [projectId, setProjectId] = useState("");
     const [category, setCategory] = useState("");
+    const [fileError, setFileError] = useState("");
 
     const handleFileChange = (event) => {
         const file = event.target.files[0];
 
-        if (file) {
-            setSelectedFile(file);
+        setFileError("");
+
+        if (!file) {
+            setSelectedFile(null);
+            return;
+        }
+
+        // Match the backend's 10 MB file size limit.
+        if (file.size > MAX_FILE_SIZE) {
+            setSelectedFile(null);
+            setFileError("File size cannot exceed 10 MB.");
+            event.target.value = "";
+            return;
+        }
+
+        setSelectedFile(file);
+    };
+
+    const handleRemoveFile = () => {
+        setSelectedFile(null);
+        setFileError("");
+
+        const fileInput = document.getElementById("resource-file");
+
+        if (fileInput) {
+            fileInput.value = "";
         }
     };
 
     const handleSubmit = (event) => {
         event.preventDefault();
 
-        // Upload functionality will be added in a later task.
+        if (!selectedFile) {
+            setFileError("Please select a file.");
+            return;
+        }
+
+        // Backend connection will be added in a later task.
         console.log("Resource ready to upload:", {
             file: selectedFile,
             projectId,
@@ -44,10 +76,31 @@ function ResourceUpload() {
                         onChange={handleFileChange}
                     />
 
-                    {selectedFile && (
-                        <p className="selected-file">
-                            Selected: {selectedFile.name}
+                    {fileError && (
+                        <p className="upload-error">
+                            {fileError}
                         </p>
+                    )}
+
+                    {selectedFile && (
+                        <div className="selected-file">
+                            <p>
+                                <strong>Selected:</strong>{" "}
+                                {selectedFile.name}
+                            </p>
+
+                            <p>
+                                Size:{" "}
+                                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                            </p>
+
+                            <button
+                                type="button"
+                                onClick={handleRemoveFile}
+                            >
+                                Remove File
+                            </button>
+                        </div>
                     )}
                 </div>
 
