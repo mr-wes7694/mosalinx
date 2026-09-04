@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 const {
     createResource,
     updateResourceStoragePath,
@@ -7,8 +10,9 @@ const {
 } = require('../models/resourceModel');
 
 const { findUserByFirebaseUid } = require('../models/userModel');
-const { storageBucket } = require('../config/firebaseAdmin');
-const { buildResourceStoragePath } = require('../utils/storage');
+
+// Store uploaded files in the backend/uploads folder.
+const uploadsDirectory = path.join(__dirname, '../uploads');
 
 const uploadResource = async (req, res) => {
     // Multer provides req.body for multipart/form-data.
@@ -41,7 +45,7 @@ const uploadResource = async (req, res) => {
     }
 
     let resource = null;
-    let firebaseFile = null;
+    let localFilePath = null;
 
     try {
         // Find the MySQL user connected to the authenticated Firebase account.
@@ -68,24 +72,43 @@ const uploadResource = async (req, res) => {
             temporaryStoragePath
         );
 
-        // Build the Firebase Storage path.
-        const storagePath = buildResourceStoragePath(
-            projectId,
-            resource.resourceId,
-            file.originalname
+        // Create a folder for this project's resources.
+        const projectUploadsDirectory = path.join(
+            uploadsDirectory,
+            String(projectId),
+            'resources'
         );
 
-        // Create a Firebase Storage file reference.
-        firebaseFile = storageBucket.file(storagePath);
-
-        // Upload the file to Firebase Storage.
-        await firebaseFile.save(file.buffer, {
-            metadata: {
-                contentType: file.mimetype,
-            },
+        await fs.promises.mkdir(projectUploadsDirectory, {
+            recursive: true,
         });
 
-        // Save the Firebase Storage path in MySQL.
+        // Add the resource ID to help keep uploaded filenames unique.
+        const safeFileName = path.basename(file.originalname);
+
+        const storageFileName = `${resource.resourceId}_${safeFileName}`;
+
+        localFilePath = path.join(
+            projectUploadsDirectory,
+            storageFileName
+        );
+
+        // Save the uploaded file to the local backend storage folder.
+        await fs.promises.writeFile(
+            localFilePath,
+            file.buffer
+        );
+
+        // Store a relative path in MySQL instead of a Firebase Storage path.
+        const storagePath = path
+            .join(
+                'uploads',
+                String(projectId),
+                'resources',
+                storageFileName
+            )
+            .replace(/\\/g, '/');
+
         await updateResourceStoragePath(
             resource.resourceId,
             storagePath
@@ -112,14 +135,14 @@ const uploadResource = async (req, res) => {
             }
         }
 
-        // Remove the Firebase file if it was created.
-        if (firebaseFile) {
+        // Remove the local file if it was created.
+        if (localFilePath) {
             try {
-                await firebaseFile.delete();
+                await fs.promises.unlink(localFilePath);
             } catch (cleanupError) {
-                if (cleanupError.code !== 404) {
+                if (cleanupError.code !== 'ENOENT') {
                     console.error(
-                        'Error cleaning up Firebase file:',
+                        'Error cleaning up local file:',
                         cleanupError
                     );
                 }
@@ -205,42 +228,40 @@ const downloadResource = async (req, res) => {
             });
         }
 
-        // Make sure the resource has a Firebase Storage path.
+        // Make sure the resource has a storage path.
         if (!resource.storage_path) {
             return res.status(404).json({
                 message: 'Resource file is not available.',
             });
         }
 
-        // Get the file from Firebase Storage.
-        const firebaseFile = storageBucket.file(resource.storage_path);
+        // Convert the database path into a local file path.
+        const localFilePath = path.join(
+            __dirname,
+            '..',
+            resource.storage_path
+        );
 
-        // Check that the file exists and get its metadata.
-        const [exists] = await firebaseFile.exists();
-
-        if (!exists) {
+        // Check that the local file exists.
+        try {
+            await fs.promises.access(localFilePath, fs.constants.F_OK);
+        } catch {
             return res.status(404).json({
                 message: 'Resource file not found in storage.',
             });
         }
 
-        const [metadata] = await firebaseFile.getMetadata();
-
-        // Set the file information for the response.
+        // Set the file type.
         res.setHeader(
             'Content-Type',
-            metadata.contentType || resource.resource_type || 'application/octet-stream'
+            resource.resource_type || 'application/octet-stream'
         );
-
-        if (metadata.size) {
-            res.setHeader('Content-Length', metadata.size);
-        }
 
         // Tell the browser to download the file using its original name.
         res.attachment(resource.resource_name);
 
-        // Stream the file from Firebase Storage to the client.
-        const downloadStream = firebaseFile.createReadStream();
+        // Stream the local file to the client.
+        const downloadStream = fs.createReadStream(localFilePath);
 
         downloadStream.on('error', (error) => {
             console.error('Error downloading resource:', error);

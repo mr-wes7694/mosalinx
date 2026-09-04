@@ -12,7 +12,7 @@ const { verifyFirebaseToken } = require('../middleware');
 
 const router = express.Router();
 
-// Store uploaded files in memory before sending them to Firebase Storage.
+// Store uploaded files in memory before saving them to local storage.
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -29,7 +29,7 @@ router.post(
 );
 
 // Download a resource.
-// Firebase authentication is required.
+// Firebase authentication is required for downloads.
 router.get(
     '/:resourceId/download',
     verifyFirebaseToken,

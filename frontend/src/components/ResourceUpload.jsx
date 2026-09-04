@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { auth } from "../firebase";
 import "./ResourceUpload.css";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -8,11 +9,14 @@ function ResourceUpload() {
     const [projectId, setProjectId] = useState("");
     const [category, setCategory] = useState("");
     const [fileError, setFileError] = useState("");
+    const [uploadStatus, setUploadStatus] = useState("");
+    const [uploading, setUploading] = useState(false);
 
     const handleFileChange = (event) => {
         const file = event.target.files[0];
 
         setFileError("");
+        setUploadStatus("");
 
         if (!file) {
             setSelectedFile(null);
@@ -33,6 +37,7 @@ function ResourceUpload() {
     const handleRemoveFile = () => {
         setSelectedFile(null);
         setFileError("");
+        setUploadStatus("");
 
         const fileInput = document.getElementById("resource-file");
 
@@ -41,20 +46,84 @@ function ResourceUpload() {
         }
     };
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
+
+        setFileError("");
+        setUploadStatus("");
 
         if (!selectedFile) {
             setFileError("Please select a file.");
             return;
         }
 
-        // Backend connection will be added in a later task.
-        console.log("Resource ready to upload:", {
-            file: selectedFile,
-            projectId,
-            category,
-        });
+        if (!projectId) {
+            setFileError("Please enter a project ID.");
+            return;
+        }
+
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            setFileError("You must be signed in to upload a resource.");
+            return;
+        }
+
+        setUploading(true);
+
+        try {
+            // Get the Firebase authentication token.
+            const token = await currentUser.getIdToken();
+
+            // Create the multipart form data expected by the backend.
+            const formData = new FormData();
+
+            formData.append("file", selectedFile);
+            formData.append("projectId", projectId);
+
+            if (category) {
+                formData.append("category", category);
+            }
+
+            const response = await fetch(
+                "http://localhost:3000/api/resources/upload",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: formData,
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to upload resource."
+                );
+            }
+
+            setUploadStatus("Resource uploaded successfully.");
+
+            // Clear the form after a successful upload.
+            setSelectedFile(null);
+            setProjectId("");
+            setCategory("");
+
+            const fileInput = document.getElementById("resource-file");
+
+            if (fileInput) {
+                fileInput.value = "";
+            }
+        } catch (error) {
+            console.error("Resource upload failed:", error);
+            setFileError(
+                error.message || "Failed to upload resource."
+            );
+        } finally {
+            setUploading(false);
+        }
     };
 
     return (
@@ -74,11 +143,18 @@ function ResourceUpload() {
                         id="resource-file"
                         type="file"
                         onChange={handleFileChange}
+                        disabled={uploading}
                     />
 
                     {fileError && (
                         <p className="upload-error">
                             {fileError}
+                        </p>
+                    )}
+
+                    {uploadStatus && (
+                        <p className="upload-success">
+                            {uploadStatus}
                         </p>
                     )}
 
@@ -97,6 +173,7 @@ function ResourceUpload() {
                             <button
                                 type="button"
                                 onClick={handleRemoveFile}
+                                disabled={uploading}
                             >
                                 Remove File
                             </button>
@@ -117,6 +194,7 @@ function ResourceUpload() {
                             setProjectId(event.target.value)
                         }
                         placeholder="Enter project ID"
+                        disabled={uploading}
                     />
                 </div>
 
@@ -131,6 +209,7 @@ function ResourceUpload() {
                         onChange={(event) =>
                             setCategory(event.target.value)
                         }
+                        disabled={uploading}
                     >
                         <option value="">Select a category</option>
                         <option value="document">Document</option>
@@ -143,9 +222,9 @@ function ResourceUpload() {
 
                 <button
                     type="submit"
-                    disabled={!selectedFile || !projectId}
+                    disabled={!selectedFile || !projectId || uploading}
                 >
-                    Upload Resource
+                    {uploading ? "Uploading..." : "Upload Resource"}
                 </button>
             </form>
         </section>

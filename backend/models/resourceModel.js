@@ -36,7 +36,7 @@ const createResource = async (
     };
 };
 
-// Update the Firebase Storage path after the MySQL resource ID is created.
+// Update the local storage path after the MySQL resource ID is created.
 const updateResourceStoragePath = async (resourceId, storagePath) => {
     const sql =
         'UPDATE resources SET storage_path = ? WHERE resource_id = ?';
@@ -44,7 +44,7 @@ const updateResourceStoragePath = async (resourceId, storagePath) => {
     await pool.query(sql, [storagePath, resourceId]);
 };
 
-// Delete a resource record if the Firebase upload fails.
+// Delete a resource record if the file upload fails.
 const deleteResourceById = async (resourceId) => {
     const sql = 'DELETE FROM resources WHERE resource_id = ?';
 
