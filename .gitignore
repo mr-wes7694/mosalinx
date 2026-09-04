@@ -58,3 +58,5 @@ database/backups/*
 .DS_Store
 Thumbs.db
 Desktop.ini
+# Local uploaded resource files
+Backend/uploads/
