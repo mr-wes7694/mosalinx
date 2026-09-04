@@ -5,6 +5,7 @@ const {
     uploadResource,
     getResourcesByProject,
     getResourceById,
+    downloadResource,
 } = require('../controllers/resourceController');
 
 const { verifyFirebaseToken } = require('../middleware');
@@ -20,12 +21,19 @@ const upload = multer({
 });
 
 // Upload a new resource.
-// Firebase authentication runs before the file upload and controller.
 router.post(
     '/upload',
     verifyFirebaseToken,
     upload.single('file'),
     uploadResource
+);
+
+// Download a resource.
+// Firebase authentication is required.
+router.get(
+    '/:resourceId/download',
+    verifyFirebaseToken,
+    downloadResource
 );
 
 // Get all resources belonging to a project.

@@ -12,7 +12,6 @@ const { buildResourceStoragePath } = require('../utils/storage');
 
 const uploadResource = async (req, res) => {
     // Multer provides req.body for multipart/form-data.
-    // Use an empty object if the body is missing.
     const body = req.body || {};
 
     const { projectId, category } = body;
@@ -56,8 +55,7 @@ const uploadResource = async (req, res) => {
 
         const file = req.file;
 
-        // Create a temporary database record first so MySQL gives us
-        // the resource ID needed for the Firebase Storage path.
+        // Create a temporary database record first.
         const temporaryStoragePath = 'pending/resource';
 
         resource = await createResource(
@@ -70,7 +68,7 @@ const uploadResource = async (req, res) => {
             temporaryStoragePath
         );
 
-        // Build the required Firebase Storage path.
+        // Build the Firebase Storage path.
         const storagePath = buildResourceStoragePath(
             projectId,
             resource.resourceId,
@@ -80,20 +78,19 @@ const uploadResource = async (req, res) => {
         // Create a Firebase Storage file reference.
         firebaseFile = storageBucket.file(storagePath);
 
-        // Upload the file buffer to Firebase Storage.
+        // Upload the file to Firebase Storage.
         await firebaseFile.save(file.buffer, {
             metadata: {
                 contentType: file.mimetype,
             },
         });
 
-        // Save the actual Firebase Storage path in MySQL.
+        // Save the Firebase Storage path in MySQL.
         await updateResourceStoragePath(
             resource.resourceId,
             storagePath
         );
 
-        // Return the completed resource information.
         resource.storagePath = storagePath;
 
         return res.status(201).json({
@@ -103,8 +100,7 @@ const uploadResource = async (req, res) => {
     } catch (error) {
         console.error('Error uploading resource:', error);
 
-        // If a database record was created but the upload failed,
-        // remove the incomplete resource record.
+        // Remove the database record if the upload failed.
         if (resource?.resourceId) {
             try {
                 await deleteResourceById(resource.resourceId);
@@ -116,13 +112,11 @@ const uploadResource = async (req, res) => {
             }
         }
 
-        // If the Firebase file was created but a later database
-        // operation failed, remove the Firebase file as well.
+        // Remove the Firebase file if it was created.
         if (firebaseFile) {
             try {
                 await firebaseFile.delete();
             } catch (cleanupError) {
-                // Ignore "file not found" cleanup errors.
                 if (cleanupError.code !== 404) {
                     console.error(
                         'Error cleaning up Firebase file:',
@@ -192,8 +186,91 @@ const getResourceById = async (req, res) => {
     }
 };
 
+const downloadResource = async (req, res) => {
+    const { resourceId } = req.params;
+
+    if (!resourceId) {
+        return res.status(400).json({
+            message: 'resourceId is required.',
+        });
+    }
+
+    try {
+        // Find the resource in MySQL.
+        const resource = await findResourceById(resourceId);
+
+        if (!resource) {
+            return res.status(404).json({
+                message: 'Resource not found.',
+            });
+        }
+
+        // Make sure the resource has a Firebase Storage path.
+        if (!resource.storage_path) {
+            return res.status(404).json({
+                message: 'Resource file is not available.',
+            });
+        }
+
+        // Get the file from Firebase Storage.
+        const firebaseFile = storageBucket.file(resource.storage_path);
+
+        // Check that the file exists and get its metadata.
+        const [exists] = await firebaseFile.exists();
+
+        if (!exists) {
+            return res.status(404).json({
+                message: 'Resource file not found in storage.',
+            });
+        }
+
+        const [metadata] = await firebaseFile.getMetadata();
+
+        // Set the file information for the response.
+        res.setHeader(
+            'Content-Type',
+            metadata.contentType || resource.resource_type || 'application/octet-stream'
+        );
+
+        if (metadata.size) {
+            res.setHeader('Content-Length', metadata.size);
+        }
+
+        // Tell the browser to download the file using its original name.
+        res.attachment(resource.resource_name);
+
+        // Stream the file from Firebase Storage to the client.
+        const downloadStream = firebaseFile.createReadStream();
+
+        downloadStream.on('error', (error) => {
+            console.error('Error downloading resource:', error);
+
+            if (!res.headersSent) {
+                return res.status(500).json({
+                    message: 'Failed to download resource.',
+                });
+            }
+
+            res.end();
+        });
+
+        downloadStream.pipe(res);
+    } catch (error) {
+        console.error('Error downloading resource:', error);
+
+        if (!res.headersSent) {
+            return res.status(500).json({
+                message: 'Failed to download resource.',
+            });
+        }
+
+        res.end();
+    }
+};
+
 module.exports = {
     uploadResource,
     getResourcesByProject,
     getResourceById,
+    downloadResource,
 };
