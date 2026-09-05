@@ -1,5 +1,10 @@
-const { findUserByEmail, createUser } = require('../models/userModel');
+const {
+    findUserByEmail,
+    findUserByFirebaseUid,
+    createUser
+} = require('../models/userModel');
 
+// Register a new Mosalinx user after Firebase account creation.
 const registerUser = async (req, res) => {
     const { firebaseUid, displayName, email } = req.body;
 
@@ -33,6 +38,38 @@ const registerUser = async (req, res) => {
     }
 };
 
+// Retrieve the authenticated user's Mosalinx profile.
+const getUserProfile = async (req, res) => {
+    try {
+        const user = await findUserByFirebaseUid(req.user.uid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'User profile not found'
+            });
+        }
+
+        return res.status(200).json({
+            user: {
+                userId: user.user_id,
+                displayName: user.display_name,
+                email: user.email,
+                profileImageUrl: user.profile_image_url,
+                bio: user.bio,
+                createdAt: user.created_at,
+                updatedAt: user.updated_at,
+            }
+        });
+    } catch (error) {
+        console.error('Error retrieving user profile:', error.message);
+
+        return res.status(500).json({
+            message: 'Internal server error'
+        });
+    }
+};
+
 module.exports = {
     registerUser,
+    getUserProfile,
 };

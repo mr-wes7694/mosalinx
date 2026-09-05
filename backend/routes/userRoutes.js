@@ -1,5 +1,10 @@
 const express = require('express');
-const { registerUser } = require('../controllers/userController');
+
+const {
+    registerUser,
+    getUserProfile,
+} = require('../controllers/userController');
+
 const { verifyFirebaseToken } = require('../middleware');
 
 const router = express.Router();
@@ -14,5 +19,8 @@ router.get('/verify-auth', verifyFirebaseToken, (req, res) => {
         uid: req.user.uid,
     });
 });
+
+// Retrieve the authenticated user's Mosalinx profile.
+router.get('/profile', verifyFirebaseToken, getUserProfile);
 
 module.exports = router;
