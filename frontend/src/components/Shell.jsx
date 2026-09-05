@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
+import { logoutUser } from '../services/authService'
 import './Shell.css'
 
 const APP_NAMES = {
@@ -12,6 +13,15 @@ function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const location = useLocation()
   const currentAppName = APP_NAMES[location.pathname] ?? 'Mosalinx'
+
+  // Initiate the existing Firebase logout flow from the authenticated shell.
+  const handleLogout = async () => {
+    try {
+      await logoutUser()
+    } catch (error) {
+      console.error('Logout failed:', error)
+    }
+  }
 
   return (
     <div className="shell">
@@ -47,6 +57,27 @@ function Shell() {
               <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
             </svg>
           </button>
+
+          <button
+            className="shell-icon-btn"
+            onClick={handleLogout}
+            aria-label="Logout"
+            title="Logout"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M10 17l5-5-5-5" />
+              <path d="M15 12H3" />
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            </svg>
+          </button>
+
         </div>
       </header>
 
