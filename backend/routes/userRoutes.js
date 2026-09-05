@@ -3,6 +3,7 @@ const express = require('express');
 const {
     registerUser,
     getUserProfile,
+    updateUserProfile,
 } = require('../controllers/userController');
 
 const { verifyFirebaseToken } = require('../middleware');
@@ -22,5 +23,8 @@ router.get('/verify-auth', verifyFirebaseToken, (req, res) => {
 
 // Retrieve the authenticated user's Mosalinx profile.
 router.get('/profile', verifyFirebaseToken, getUserProfile);
+
+// Update supported profile fields for the authenticated user.
+router.patch('/profile', verifyFirebaseToken, updateUserProfile);
 
 module.exports = router;
