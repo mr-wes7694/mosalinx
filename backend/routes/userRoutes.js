@@ -5,7 +5,7 @@ const { verifyFirebaseToken } = require('../middleware');
 const router = express.Router();
 
 // Register a new Mosalinx user after Firebase account creation.
-router.post('/register', registerUser);
+router.post('/register', verifyFirebaseToken, registerUser);
 
 // Verify authenticated requests using a Firebase ID token.
 router.get('/verify-auth', verifyFirebaseToken, (req, res) => {
