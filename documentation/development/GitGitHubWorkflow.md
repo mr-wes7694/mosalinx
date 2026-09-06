@@ -580,13 +580,23 @@ If anything unexpected appears, return to the task branch, correct the issue, co
 
 ### 9. Request Review
 
-Once the pull request is ready, request review from another Mosalinx team member.
+Once the pull request is ready, request review from another Mosalinx team member when practical.
 
-The person who completed the work should not be the only person responsible for verifying that the work is ready to merge.
+Pull requests should receive an appropriate level of review before merging. For changes completed by a team member who normally performs repository review or integration work, a thorough self-review may be used when another reviewer is not reasonably available.
 
-Do not merge the pull request until the review process has been completed and any requested changes have been addressed.
+Before merging your own pull request:
 
-> **Rule of Thumb:** Opening a pull request does not mean the work is finished. A pull request means the task branch is ready to be reviewed against the Jira completion criteria and the current integrated state of the project.
+- Review the **Files changed** section carefully.
+- Confirm that only intended files and changes are included.
+- Verify that the implementation satisfies the applicable Jira completion criteria.
+- Complete all applicable testing against the current integrated project state.
+- Confirm that the branch is synchronized with `main`.
+- Resolve any identified issues before merging.
+- Document the verification performed in the pull request and Jira task when applicable.
+
+When another team member is available to review the work, independent review is still preferred.
+
+> **Rule of Thumb:** A pull request should not be merged simply because it has been opened. Whether reviewed by another team member or thoroughly self-reviewed when necessary, the work should be verified against the Jira completion criteria and the current integrated state of the project before merging.
 
 ## Pull Request Review Workflow
 
