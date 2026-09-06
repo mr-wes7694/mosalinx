@@ -1,4 +1,9 @@
-require('dotenv').config();
+const path = require('path');
+
+// Load backend environment variables regardless of the current working directory.
+require('dotenv').config({
+    path: path.resolve(__dirname, '../.env'),
+});
 
 const config = {
     port: process.env.PORT || 3000,
@@ -9,6 +14,12 @@ const config = {
         name: process.env.DB_NAME || 'mosalinx_dev',
         user: process.env.DB_USER || 'mosalinx_dev',
         password: process.env.DB_PASSWORD,
+    },
+
+    firebase: {
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     },
 };
 

@@ -109,6 +109,7 @@ Firebase will manage passwords and login credentials. The MySQL `users` table wi
 | `display_name` | `VARCHAR(100)` | Not Null | User-facing display name |
 | `email` | `VARCHAR(255)` | Unique, Not Null | User account email |
 | `profile_image_url` | `VARCHAR(500)` | Nullable | Optional user profile image |
+| `bio` | `VARCHAR(500)` | Nullable | Optional short user bio/about text |
 | `created_at` | `TIMESTAMP` | Default Current Timestamp | Date and time the user record was created |
 | `updated_at` | `TIMESTAMP` | Auto-updated | Date and time the user record was last updated |
 
@@ -120,6 +121,7 @@ Firebase will manage passwords and login credentials. The MySQL `users` table wi
 - Remove `password_hash`.
 - Retain unique `email`.
 - Add optional `profile_image_url`.
+- Add optional `bio` for authenticated user profile information.
 - Add `updated_at`.
 
 #### Identity Strategy
