@@ -36,7 +36,7 @@ const createResource = async (
     };
 };
 
-// Update the local storage path after the MySQL resource ID is created.
+// Update the Firebase Storage path after the MySQL resource ID is created.
 const updateResourceStoragePath = async (resourceId, storagePath) => {
     const sql =
         'UPDATE resources SET storage_path = ? WHERE resource_id = ?';
@@ -73,10 +73,25 @@ const findResourcesByProject = async (projectId) => {
     return rows;
 };
 
+// Check whether a user belongs to a project.
+const isProjectMember = async (projectId, userId) => {
+    const sql =
+        'SELECT 1 FROM project_members ' +
+        'WHERE project_id = ? AND user_id = ? LIMIT 1';
+
+    const [rows] = await pool.query(sql, [
+        projectId,
+        userId,
+    ]);
+
+    return rows.length > 0;
+};
+
 module.exports = {
     createResource,
     updateResourceStoragePath,
     deleteResourceById,
     findResourceById,
     findResourcesByProject,
+    isProjectMember,
 };

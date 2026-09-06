@@ -1,18 +1,19 @@
-const fs = require('fs');
-const path = require('path');
-
 const {
     createResource,
     updateResourceStoragePath,
     deleteResourceById,
     findResourceById,
     findResourcesByProject,
+    isProjectMember,
 } = require('../models/resourceModel');
 
 const { findUserByFirebaseUid } = require('../models/userModel');
 
-// Store uploaded files in the backend/uploads folder.
-const uploadsDirectory = path.join(__dirname, '../uploads');
+const { storageBucket } = require('../config/firebaseAdmin');
+
+const {
+    buildResourceStoragePath,
+} = require('../utils/storage');
 
 const uploadResource = async (req, res) => {
     // Multer provides req.body for multipart/form-data.
@@ -20,24 +21,21 @@ const uploadResource = async (req, res) => {
 
     const { projectId, category } = body;
 
-    // The Firebase middleware should provide the authenticated user.
+    // The Firebase middleware provides the authenticated user.
     const firebaseUid = req.user?.uid;
 
-    // Validate the authenticated user.
     if (!firebaseUid) {
         return res.status(401).json({
             message: 'Unauthorized.',
         });
     }
 
-    // Validate the project ID.
     if (!projectId) {
         return res.status(400).json({
             message: 'projectId is required.',
         });
     }
 
-    // Validate the uploaded file.
     if (!req.file) {
         return res.status(400).json({
             message: 'A file is required.',
@@ -45,10 +43,10 @@ const uploadResource = async (req, res) => {
     }
 
     let resource = null;
-    let localFilePath = null;
+    let firebaseStoragePath = null;
 
     try {
-        // Find the MySQL user connected to the authenticated Firebase account.
+        // Find the MySQL user connected to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -59,9 +57,7 @@ const uploadResource = async (req, res) => {
 
         const file = req.file;
 
-        // Create a temporary database record first.
-        const temporaryStoragePath = 'pending/resource';
-
+        // Create the database record first so we have the resource ID.
         resource = await createResource(
             projectId,
             user.user_id,
@@ -69,52 +65,34 @@ const uploadResource = async (req, res) => {
             file.mimetype,
             file.size,
             category || null,
-            temporaryStoragePath
+            'pending/resource'
         );
 
-        // Create a folder for this project's resources.
-        const projectUploadsDirectory = path.join(
-            uploadsDirectory,
-            String(projectId),
-            'resources'
+        // Build the required Firebase Storage path.
+        firebaseStoragePath = buildResourceStoragePath(
+            projectId,
+            resource.resourceId,
+            file.originalname
         );
 
-        await fs.promises.mkdir(projectUploadsDirectory, {
-            recursive: true,
+        // Get the Firebase Storage file reference.
+        const storageFile = storageBucket.file(firebaseStoragePath);
+
+        // Upload the file buffer to Firebase Storage.
+        await storageFile.save(file.buffer, {
+            metadata: {
+                contentType:
+                    file.mimetype || 'application/octet-stream',
+            },
         });
 
-        // Add the resource ID to help keep uploaded filenames unique.
-        const safeFileName = path.basename(file.originalname);
-
-        const storageFileName = `${resource.resourceId}_${safeFileName}`;
-
-        localFilePath = path.join(
-            projectUploadsDirectory,
-            storageFileName
-        );
-
-        // Save the uploaded file to the local backend storage folder.
-        await fs.promises.writeFile(
-            localFilePath,
-            file.buffer
-        );
-
-        // Store a relative path in MySQL instead of a Firebase Storage path.
-        const storagePath = path
-            .join(
-                'uploads',
-                String(projectId),
-                'resources',
-                storageFileName
-            )
-            .replace(/\\/g, '/');
-
+        // Save the Firebase Storage path in MySQL.
         await updateResourceStoragePath(
             resource.resourceId,
-            storagePath
+            firebaseStoragePath
         );
 
-        resource.storagePath = storagePath;
+        resource.storagePath = firebaseStoragePath;
 
         return res.status(201).json({
             message: 'Resource uploaded successfully.',
@@ -122,6 +100,20 @@ const uploadResource = async (req, res) => {
         });
     } catch (error) {
         console.error('Error uploading resource:', error);
+
+        // Remove the Firebase file if it was created.
+        if (firebaseStoragePath) {
+            try {
+                await storageBucket
+                    .file(firebaseStoragePath)
+                    .delete();
+            } catch (cleanupError) {
+                console.error(
+                    'Error cleaning up Firebase Storage file:',
+                    cleanupError
+                );
+            }
+        }
 
         // Remove the database record if the upload failed.
         if (resource?.resourceId) {
@@ -132,20 +124,6 @@ const uploadResource = async (req, res) => {
                     'Error cleaning up resource record:',
                     cleanupError
                 );
-            }
-        }
-
-        // Remove the local file if it was created.
-        if (localFilePath) {
-            try {
-                await fs.promises.unlink(localFilePath);
-            } catch (cleanupError) {
-                if (cleanupError.code !== 'ENOENT') {
-                    console.error(
-                        'Error cleaning up local file:',
-                        cleanupError
-                    );
-                }
             }
         }
 
@@ -218,6 +196,14 @@ const downloadResource = async (req, res) => {
         });
     }
 
+    const firebaseUid = req.user?.uid;
+
+    if (!firebaseUid) {
+        return res.status(401).json({
+            message: 'Unauthorized.',
+        });
+    }
+
     try {
         // Find the resource in MySQL.
         const resource = await findResourceById(resourceId);
@@ -228,24 +214,43 @@ const downloadResource = async (req, res) => {
             });
         }
 
-        // Make sure the resource has a storage path.
+        // Find the MySQL user connected to the Firebase account.
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Authenticated user is not registered in the database.',
+            });
+        }
+
+        // Verify that the user belongs to the resource's project.
+        const isMember = await isProjectMember(
+            resource.project_id,
+            user.user_id
+        );
+
+        if (!isMember) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
+
+        // Make sure the resource has a Firebase Storage path.
         if (!resource.storage_path) {
             return res.status(404).json({
                 message: 'Resource file is not available.',
             });
         }
 
-        // Convert the database path into a local file path.
-        const localFilePath = path.join(
-            __dirname,
-            '..',
+        // Get the Firebase Storage file reference.
+        const storageFile = storageBucket.file(
             resource.storage_path
         );
 
-        // Check that the local file exists.
-        try {
-            await fs.promises.access(localFilePath, fs.constants.F_OK);
-        } catch {
+        // Check that the file exists in Firebase Storage.
+        const [exists] = await storageFile.exists();
+
+        if (!exists) {
             return res.status(404).json({
                 message: 'Resource file not found in storage.',
             });
@@ -260,8 +265,8 @@ const downloadResource = async (req, res) => {
         // Tell the browser to download the file using its original name.
         res.attachment(resource.resource_name);
 
-        // Stream the local file to the client.
-        const downloadStream = fs.createReadStream(localFilePath);
+        // Stream the Firebase Storage file to the client.
+        const downloadStream = storageFile.createReadStream();
 
         downloadStream.on('error', (error) => {
             console.error('Error downloading resource:', error);

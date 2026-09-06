@@ -4,6 +4,8 @@ import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
 import Shell from './components/Shell.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import Dashboard from './pages/Dashboard.jsx'
+import Resources from './pages/Resources.jsx'
 
 function App() {
   return (
@@ -11,6 +13,7 @@ function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+
       <Route
         path="/dashboard"
         element={
@@ -18,7 +21,20 @@ function App() {
             <Shell />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<Dashboard />} />
+      </Route>
+
+      <Route
+        path="/app"
+        element={
+          <ProtectedRoute>
+            <Shell />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="resources" element={<Resources />} />
+      </Route>
     </Routes>
   )
 }
