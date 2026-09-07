@@ -66,10 +66,10 @@ const lastName = lastNameParts.join(' ')
 
           <div className="shell-profile" ref={profileMenuRef}>
   <button
-    className="shell-icon-btn"
-    aria-label="Profile"
-    onClick={() => setProfileOpen((open) => !open)}
-  >
+  className={`shell-icon-btn${profileOpen ? ' is-open' : ''}`}
+  aria-label="Profile"
+  onClick={() => setProfileOpen((open) => !open)}
+>
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />

@@ -65,6 +65,11 @@
   color: #000000;
 }
 
+.shell-profile .shell-icon-btn.is-open {
+  background: #14bbc4;
+  color: #000000;
+}
+
 .shell-icon-btn:focus-visible {
   outline: 2px solid #14bbc4;
   outline-offset: 2px;
