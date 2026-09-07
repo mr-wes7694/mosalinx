@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import './Sidebar.css'
 
 const ITEMS = [
   {
     id: 'bulletin',
     label: 'Bulletin Board',
+    path: '/dashboard',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -17,6 +18,7 @@ const ITEMS = [
   {
     id: 'calendar',
     label: 'Calendar',
+    path: '/dashboard/calendar',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="5" width="18" height="16" rx="2" />
@@ -29,6 +31,7 @@ const ITEMS = [
   {
     id: 'messages',
     label: 'Messages',
+    path: '/dashboard/messages',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -38,6 +41,7 @@ const ITEMS = [
   {
     id: 'statistics',
     label: 'Statistics',
+    path: '/dashboard/statistics',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
         <line x1="6" y1="20" x2="6" y2="12" />
@@ -49,6 +53,7 @@ const ITEMS = [
   {
     id: 'resources',
     label: 'Resources',
+    path: '/dashboard/resources',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -58,6 +63,7 @@ const ITEMS = [
   {
     id: 'workspace',
     label: 'Workspace',
+    path: '/dashboard/workspace',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="2" y="7" width="20" height="14" rx="2" />
@@ -67,11 +73,11 @@ const ITEMS = [
   },
 ]
 
-// 'left' and 'right' render as a vertical rail; 'top' and 'bottom' render as a horizontal bar.
 const VERTICAL_POSITIONS = ['left', 'right']
 
 function Sidebar({ position = 'left' }) {
-  const [selected, setSelected] = useState('bulletin')
+  const navigate = useNavigate()
+  const location = useLocation()
   const isVertical = VERTICAL_POSITIONS.includes(position)
 
   return (
@@ -82,8 +88,8 @@ function Sidebar({ position = 'left' }) {
       {ITEMS.map((item) => (
         <button
           key={item.id}
-          className={'sidebar-item' + (selected === item.id ? ' is-active' : '')}
-          onClick={() => setSelected(item.id)}
+          className={'sidebar-item' + (location.pathname === item.path ? ' is-active' : '')}
+          onClick={() => navigate(item.path)}
         >
           <span className="sidebar-icon">{item.icon}</span>
           <span className="sidebar-label">{item.label}</span>
