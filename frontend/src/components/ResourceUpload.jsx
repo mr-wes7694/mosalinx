@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { auth } from "../firebase";
+import ResourceCategory from "./ResourceCategory";
 import "./ResourceUpload.css";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -198,27 +199,11 @@ function ResourceUpload() {
                     />
                 </div>
 
-                <div className="upload-field">
-                    <label htmlFor="resource-category">
-                        Category
-                    </label>
-
-                    <select
-                        id="resource-category"
-                        value={category}
-                        onChange={(event) =>
-                            setCategory(event.target.value)
-                        }
-                        disabled={uploading}
-                    >
-                        <option value="">Select a category</option>
-                        <option value="document">Document</option>
-                        <option value="image">Image</option>
-                        <option value="video">Video</option>
-                        <option value="audio">Audio</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
+                <ResourceCategory
+                    value={category}
+                    onChange={setCategory}
+                    disabled={uploading}
+                />
 
                 <button
                     type="submit"
