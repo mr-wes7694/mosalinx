@@ -1,14 +1,13 @@
-/* Bar size */
 .shell {
   min-height: 100vh;
   width: 100%;
   display: flex;
   flex-direction: column;
-  background: #f2f2f2;
+  background: #232529;
+  color: #f5f5f5;
   font-family: system-ui, sans-serif;
 }
 
-/* Bar color */
 .shell-topbar {
   height: 64px;
   flex-shrink: 0;
@@ -36,14 +35,12 @@
   gap: 10px;
 }
 
-/* Text for current app view name */
 .shell-app-name {
   font-size: 1rem;
   font-weight: 600;
   color: #1a1b1e;
 }
 
-/* Icon basis */
 .shell-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -59,13 +56,7 @@
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-/* When you hover over a top bar icon */
 .shell-icon-btn:hover {
-  background: #14bbc4;
-  color: #000000;
-}
-
-.shell-profile .shell-icon-btn.is-open {
   background: #14bbc4;
   color: #000000;
 }
@@ -75,46 +66,13 @@
   outline-offset: 2px;
 }
 
-.shell-body {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.shell-body--left {
-  flex-direction: row;
-}
-
-.shell-body--right {
-  flex-direction: row;
-}
-
-.shell-body--right .sidebar {
-  order: 1;
-}
-
-.shell-body--right .shell-content {
-  order: 0;
-}
-
-.shell-body--top {
-  flex-direction: column;
-}
-
-.shell-body--bottom {
-  flex-direction: column;
-}
-
-.shell-body--bottom .sidebar {
-  order: 1;
-}
-
-.shell-body--bottom .shell-content {
-  order: 0;
-}
-
 .shell-profile {
   position: relative;
+}
+
+.shell-profile .shell-icon-btn.is-open {
+  background: #14bbc4;
+  color: #000000;
 }
 
 .shell-profile-menu {
@@ -172,4 +130,65 @@
 .shell-profile-edit:hover {
   background: #14bbc4;
   color: #000000;
+}
+
+.shell-profile-logout {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: transparent;
+  color: #c0392b;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.shell-profile-logout:hover {
+  background: rgba(139, 0, 0, 0.15);
+}
+
+.shell-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.shell-body--left {
+  flex-direction: row;
+}
+
+.shell-body--right {
+  flex-direction: row;
+}
+
+.shell-body--right .sidebar {
+  order: 1;
+}
+
+.shell-body--right .shell-content {
+  order: 0;
+}
+
+.shell-body--top {
+  flex-direction: column;
+}
+
+.shell-body--bottom {
+  flex-direction: column;
+}
+
+.shell-body--bottom .sidebar {
+  order: 1;
+}
+
+.shell-body--bottom .shell-content {
+  order: 0;
+}
+
+.shell-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px;
 }

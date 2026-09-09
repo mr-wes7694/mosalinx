@@ -10,6 +10,7 @@ import Messages from './pages/Messages.jsx'
 import Statistics from './pages/Statistics.jsx'
 import Resources from './pages/Resources.jsx'
 import Workspace from './pages/Workspace.jsx'
+import Settings from './pages/Settings.jsx'
 
 function App() {
   return (
@@ -33,6 +34,15 @@ function App() {
         <Route path="resources" element={<Resources />} />
         <Route path="workspace" element={<Workspace />} />
       </Route>
+
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   )
 }
