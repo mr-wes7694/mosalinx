@@ -37,7 +37,11 @@ router.get(
 );
 
 // Get all resources belonging to a project.
-router.get('/project/:projectId', getResourcesByProject);
+router.get(
+    '/project/:projectId',
+    verifyFirebaseToken,
+    getResourcesByProject
+);
 
 // Get one resource by its ID.
 router.get('/:resourceId', getResourceById);

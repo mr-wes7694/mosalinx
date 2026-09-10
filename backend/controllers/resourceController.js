@@ -154,7 +154,36 @@ const getResourcesByProject = async (req, res) => {
         });
     }
 
+    const firebaseUid = req.user?.uid;
+
+    if (!firebaseUid) {
+        return res.status(401).json({
+            message: 'Unauthorized.',
+        });
+    }
+
     try {
+        // Find the MySQL user connected to the Firebase account.
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Authenticated user is not registered in the database.',
+            });
+        }
+
+        // Verify that the user belongs to the project.
+        const isMember = await isProjectMember(
+            projectId,
+            user.user_id
+        );
+
+        if (!isMember) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
+
         const resources = await findResourcesByProject(projectId);
 
         return res.status(200).json({
