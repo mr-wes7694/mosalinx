@@ -44,6 +44,10 @@ router.get(
 );
 
 // Get one resource by its ID.
-router.get('/:resourceId', getResourceById);
+router.get(
+    '/:resourceId',
+    verifyFirebaseToken,
+    getResourceById
+);
 
 module.exports = router;
