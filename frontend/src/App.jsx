@@ -11,6 +11,7 @@ import Statistics from './pages/Statistics.jsx'
 import Resources from './pages/Resources.jsx'
 import Workspace from './pages/Workspace.jsx'
 import Settings from './pages/Settings.jsx'
+import Profile from './pages/Profile.jsx'
 
 function App() {
   return (
@@ -40,6 +41,15 @@ function App() {
         element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
           </ProtectedRoute>
         }
       />

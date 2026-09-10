@@ -105,7 +105,7 @@ const lastName = lastNameParts.join(' ')
         <span className="shell-profile-label">User ID</span>
         <span className="shell-profile-value shell-profile-uid">{currentUser?.uid}</span>
       </div>
-      <button className="shell-profile-edit">Edit Profile</button>
+      <button className="shell-profile-edit" onClick={() => navigate('/profile')}>Edit Profile</button>
       <button className="shell-profile-logout" onClick={handleLogout}>Log out</button>
     </div>
   )}
