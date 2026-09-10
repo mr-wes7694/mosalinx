@@ -1,7 +1,9 @@
+const fs = require('fs');
+
 const {
     initializeApp,
     getApps,
-    applicationDefault,
+    cert,
 } = require('firebase-admin/app');
 
 const { getAuth } = require('firebase-admin/auth');
@@ -18,12 +20,26 @@ if (!config.firebase.storageBucket) {
     throw new Error('Missing Firebase Storage bucket configuration');
 }
 
-// Initialize Firebase Admin once using the service account configured
-// through GOOGLE_APPLICATION_CREDENTIALS.
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    throw new Error('Missing Firebase service account configuration');
+}
+
+// Load the existing local service account file.
+let serviceAccount;
+
+try {
+    serviceAccount = JSON.parse(
+        fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8')
+    );
+} catch (error) {
+    throw new Error('Unable to load Firebase service account file');
+}
+
+// Initialize Firebase Admin once using the configured service account.
 const firebaseApp = getApps().length
     ? getApps()[0]
     : initializeApp({
-        credential: applicationDefault(),
+        credential: cert(serviceAccount),
         projectId: config.firebase.projectId,
         storageBucket: config.firebase.storageBucket,
     });
