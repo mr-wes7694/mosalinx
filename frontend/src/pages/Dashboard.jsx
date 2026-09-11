@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { logoutUser } from "../services/authService";
-import ResourceUpload from "../components/ResourceUpload";
 
 function Dashboard() {
     const [user, setUser] = useState(null);
@@ -40,8 +39,6 @@ function Dashboard() {
 
             <p>Welcome!</p>
             <p>Email: {user.email}</p>
-
-            <ResourceUpload />
 
             <button onClick={handleLogout}>
                 Logout

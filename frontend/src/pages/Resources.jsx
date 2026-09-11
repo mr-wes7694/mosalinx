@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { auth } from "../firebase";
+import ResourceUpload from "../components/ResourceUpload";
 
 const API_URL = "http://localhost:3000/api/resources";
 const PROJECT_ID = "2";
@@ -121,7 +122,9 @@ function Resources() {
     return (
         <section>
             <h1>Resources</h1>
-            <p>Project resources for project {PROJECT_ID}.</p>
+            <p>Manage files for project {PROJECT_ID}.</p>
+
+            <ResourceUpload />
 
             {error && (
                 <p role="alert">
@@ -129,45 +132,49 @@ function Resources() {
                 </p>
             )}
 
-            {resources.length === 0 ? (
-                <p>No resources found.</p>
-            ) : (
-                <div>
-                    {resources.map((resource) => (
-                        <article key={resource.resource_id}>
-                            <h2>{resource.resource_name}</h2>
+            <section>
+                <h2>Project Resources</h2>
 
-                            <p>
-                                Type:{" "}
-                                {resource.resource_type ||
-                                    "Unknown"}
-                            </p>
+                {resources.length === 0 ? (
+                    <p>No resources found.</p>
+                ) : (
+                    <div>
+                        {resources.map((resource) => (
+                            <article key={resource.resource_id}>
+                                <h3>{resource.resource_name}</h3>
 
-                            <p>
-                                Category:{" "}
-                                {resource.category ||
-                                    "Uncategorized"}
-                            </p>
+                                <p>
+                                    Type:{" "}
+                                    {resource.resource_type ||
+                                        "Unknown"}
+                                </p>
 
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    handleDownload(resource)
-                                }
-                                disabled={
-                                    downloadingId ===
+                                <p>
+                                    Category:{" "}
+                                    {resource.category ||
+                                        "Uncategorized"}
+                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        handleDownload(resource)
+                                    }
+                                    disabled={
+                                        downloadingId ===
+                                        resource.resource_id
+                                    }
+                                >
+                                    {downloadingId ===
                                     resource.resource_id
-                                }
-                            >
-                                {downloadingId ===
-                                resource.resource_id
-                                    ? "Downloading..."
-                                    : "Download"}
-                            </button>
-                        </article>
-                    ))}
-                </div>
-            )}
+                                        ? "Downloading..."
+                                        : "Download"}
+                                </button>
+                            </article>
+                        ))}
+                    </div>
+                )}
+            </section>
         </section>
     );
 }
