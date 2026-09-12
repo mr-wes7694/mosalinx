@@ -50,13 +50,36 @@ A safe `.env.example` file may be included in the repository to document require
 
 The canonical Mosalinx database schema will be maintained in the repository under:
 
-`database/schema.sql`
+`database/schemas/schema.sql`
 
 Database migrations will be stored under:
 
 `database/migrations/`
 
 Schema changes should be committed through the project's feature-branch workflow and reviewed before integration.
+
+### User Settings
+
+Persistent application preferences are stored in the `user_settings` table.
+
+The table uses `user_id` as both its primary key and a foreign key referencing `users.user_id`, creating a one-to-one relationship between a Mosalinx user and their stored settings.
+
+Current persisted settings include:
+
+- Notification preferences for text, email, and browser push notifications
+- Sidebar position
+- Theme
+- Font size
+- Navigation size
+- Alternate font
+- Highlighted text settings
+- Highlight and text colors
+- Module zoom
+- Module zoom shortcut
+
+Default database values match the current frontend Settings defaults.
+
+Deleting a user automatically removes the related settings record through `ON DELETE CASCADE`.
 
 ## Current Status
 

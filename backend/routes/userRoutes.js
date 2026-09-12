@@ -6,6 +6,11 @@ const {
     updateUserProfile,
 } = require('../controllers/userController');
 
+const {
+    getUserSettings,
+    updateUserSettings,
+} = require('../controllers/userSettingsController');
+
 const { verifyFirebaseToken } = require('../middleware');
 
 const router = express.Router();
@@ -26,5 +31,11 @@ router.get('/profile', verifyFirebaseToken, getUserProfile);
 
 // Update supported profile fields for the authenticated user.
 router.patch('/profile', verifyFirebaseToken, updateUserProfile);
+
+// Retrieve account settings for the authenticated user.
+router.get('/settings', verifyFirebaseToken, getUserSettings);
+
+// Update supported account settings for the authenticated user.
+router.patch('/settings', verifyFirebaseToken, updateUserSettings);
 
 module.exports = router;
