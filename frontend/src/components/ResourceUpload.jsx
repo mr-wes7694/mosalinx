@@ -5,9 +5,8 @@ import "./ResourceUpload.css";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-function ResourceUpload() {
+function ResourceUpload({ projectId }) {
     const [selectedFile, setSelectedFile] = useState(null);
-    const [projectId, setProjectId] = useState("");
     const [category, setCategory] = useState("");
     const [fileError, setFileError] = useState("");
     const [uploadStatus, setUploadStatus] = useState("");
@@ -24,7 +23,6 @@ function ResourceUpload() {
             return;
         }
 
-        // Match the backend's 10 MB file size limit.
         if (file.size > MAX_FILE_SIZE) {
             setSelectedFile(null);
             setFileError("File size cannot exceed 10 MB.");
@@ -59,7 +57,7 @@ function ResourceUpload() {
         }
 
         if (!projectId) {
-            setFileError("Please enter a project ID.");
+            setFileError("No active project is selected.");
             return;
         }
 
@@ -73,10 +71,8 @@ function ResourceUpload() {
         setUploading(true);
 
         try {
-            // Get the Firebase authentication token.
             const token = await currentUser.getIdToken();
 
-            // Create the multipart form data expected by the backend.
             const formData = new FormData();
 
             formData.append("file", selectedFile);
@@ -107,9 +103,7 @@ function ResourceUpload() {
 
             setUploadStatus("Resource uploaded successfully.");
 
-            // Clear the form after a successful upload.
             setSelectedFile(null);
-            setProjectId("");
             setCategory("");
 
             const fileInput = document.getElementById("resource-file");
@@ -180,23 +174,6 @@ function ResourceUpload() {
                             </button>
                         </div>
                     )}
-                </div>
-
-                <div className="upload-field">
-                    <label htmlFor="project-id">
-                        Project ID
-                    </label>
-
-                    <input
-                        id="project-id"
-                        type="text"
-                        value={projectId}
-                        onChange={(event) =>
-                            setProjectId(event.target.value)
-                        }
-                        placeholder="Enter project ID"
-                        disabled={uploading}
-                    />
                 </div>
 
                 <ResourceCategory

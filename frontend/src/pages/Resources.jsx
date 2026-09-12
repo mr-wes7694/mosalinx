@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { auth } from "../firebase";
+import { useProject } from "../context/ProjectContext";
 import ResourceUpload from "../components/ResourceUpload";
 
 const API_URL = "http://localhost:3000/api/resources";
-const PROJECT_ID = "2";
 
 function Resources() {
+    const {
+        activeProject,
+        loadingProjects,
+        projectError,
+    } = useProject();
+
     const [resources, setResources] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -13,6 +19,23 @@ function Resources() {
 
     useEffect(() => {
         const loadResources = async () => {
+            if (loadingProjects) {
+                return;
+            }
+
+            if (projectError) {
+                setError(projectError);
+                setLoading(false);
+                return;
+            }
+
+            if (!activeProject) {
+                setResources([]);
+                setError("No active project is available.");
+                setLoading(false);
+                return;
+            }
+
             const currentUser = auth.currentUser;
 
             if (!currentUser) {
@@ -22,11 +45,12 @@ function Resources() {
             }
 
             try {
-                // Get the Firebase authentication token.
+                setError("");
+
                 const token = await currentUser.getIdToken();
 
                 const response = await fetch(
-                    `${API_URL}/project/${PROJECT_ID}`,
+                    `${API_URL}/project/${activeProject.project_id}`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -54,7 +78,7 @@ function Resources() {
         };
 
         loadResources();
-    }, []);
+    }, [activeProject, loadingProjects, projectError]);
 
     const handleDownload = async (resource) => {
         const currentUser = auth.currentUser;
@@ -68,7 +92,6 @@ function Resources() {
         setDownloadingId(resource.resource_id);
 
         try {
-            // Get the Firebase authentication token.
             const token = await currentUser.getIdToken();
 
             const response = await fetch(
@@ -93,7 +116,6 @@ function Resources() {
                 throw new Error(message);
             }
 
-            // Convert the response into a downloadable browser file.
             const blob = await response.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
 
@@ -115,16 +137,31 @@ function Resources() {
         }
     };
 
-    if (loading) {
+    if (loadingProjects || loading) {
         return <p>Loading resources...</p>;
+    }
+
+    if (!activeProject) {
+        return (
+            <section>
+                <h1>Resources</h1>
+                <p>No active project is available.</p>
+            </section>
+        );
     }
 
     return (
         <section>
             <h1>Resources</h1>
-            <p>Manage files for project {PROJECT_ID}.</p>
 
-            <ResourceUpload />
+            <p>
+                Manage files for{" "}
+                <strong>{activeProject.project_name}</strong>.
+            </p>
+
+            <ResourceUpload
+                projectId={activeProject.project_id}
+            />
 
             {error && (
                 <p role="alert">
