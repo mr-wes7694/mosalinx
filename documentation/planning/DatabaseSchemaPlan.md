@@ -131,6 +131,47 @@ Mosalinx will use:
 - `firebase_uid` to connect the MySQL user record to Firebase Authentication.
 - `user_id` as the primary relational identifier referenced by other MySQL tables.
 
+### `user_settings`
+
+#### Purpose
+
+Stores persistent user-level application preferences separately from core authentication and profile data.
+
+Each Mosalinx user may have one associated settings record. The table uses `user_id` as both the primary key and a foreign key referencing `users.user_id`.
+
+#### Columns
+
+| Column | Data Type | Constraints | Purpose |
+|---|---|---|---|
+| `user_id` | `BIGINT UNSIGNED` | Primary Key, Foreign Key | User associated with the settings record |
+| `notify_text` | `BOOLEAN` | Not Null, Default False | Enables text notification preference |
+| `notify_email` | `BOOLEAN` | Not Null, Default True | Enables email notification preference |
+| `notify_push` | `BOOLEAN` | Not Null, Default False | Enables browser push notification preference |
+| `sidebar_position` | `VARCHAR(20)` | Not Null, Default `left` | Preferred sidebar position |
+| `theme` | `VARCHAR(20)` | Not Null, Default `light` | Preferred application theme |
+| `font_size` | `VARCHAR(20)` | Not Null, Default `Medium` | Preferred font size |
+| `nav_size` | `VARCHAR(20)` | Not Null, Default `Small` | Preferred navigation size |
+| `alt_font` | `VARCHAR(100)` | Not Null, Default `Default` | Preferred alternate font |
+| `highlighted_text` | `BOOLEAN` | Not Null, Default False | Enables highlighted text accessibility option |
+| `highlight_color` | `VARCHAR(20)` | Not Null, Default `Yellow` | Preferred highlight color |
+| `highlight_text_color` | `VARCHAR(20)` | Not Null, Default `Black` | Preferred highlighted text color |
+| `module_zoom` | `BOOLEAN` | Not Null, Default False | Enables module zoom accessibility option |
+| `zoom_shortcut` | `VARCHAR(100)` | Not Null, Default `Ctrl + Click` | Preferred module zoom shortcut |
+| `created_at` | `TIMESTAMP` | Default Current Timestamp | Date and time settings record was created |
+| `updated_at` | `TIMESTAMP` | Auto-updated | Date and time settings record was last updated |
+
+#### Relationship
+
+- `user_settings.user_id` references `users.user_id`.
+- One user may have no more than one settings record.
+- Deleting a user removes the related settings record through `ON DELETE CASCADE`.
+
+#### Settings Persistence Strategy
+
+Settings records are not automatically created for all existing users during the schema migration.
+
+The backend settings workflow will create or manage user settings as needed while preserving the database defaults defined by the current Settings interface.
+
 ### `projects`
 
 #### Purpose
