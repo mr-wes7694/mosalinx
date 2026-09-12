@@ -21,15 +21,28 @@ function Profile() {
     gender: '',
     pronouns: '',
     bio: '',
+    avatarUrl: null,
   }
 
   const [savedProfile, setSavedProfile] = useState(DEFAULT_PROFILE)
   const [draftProfile, setDraftProfile] = useState(DEFAULT_PROFILE)
   const [isEditing, setIsEditing] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null) // 'cancel' | 'back'
 
   function updateField(key, value) {
     setDraftProfile((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function handleAvatarChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const url = URL.createObjectURL(file)
+    updateField('avatarUrl', url)
+  }
+
+  function isDirty() {
+    return JSON.stringify(draftProfile) !== JSON.stringify(savedProfile)
   }
 
   function handleEdit() {
@@ -38,11 +51,20 @@ function Profile() {
   }
 
   function handleCancel() {
-    const isDirty = JSON.stringify(draftProfile) !== JSON.stringify(savedProfile)
-    if (isDirty) {
+    if (isDirty()) {
+      setPendingAction('cancel')
       setShowCancelConfirm(true)
     } else {
       setIsEditing(false)
+    }
+  }
+
+  function handleBack() {
+    if (isEditing && isDirty()) {
+      setPendingAction('back')
+      setShowCancelConfirm(true)
+    } else {
+      navigate('/dashboard')
     }
   }
 
@@ -50,10 +72,15 @@ function Profile() {
     setDraftProfile(savedProfile)
     setShowCancelConfirm(false)
     setIsEditing(false)
+    if (pendingAction === 'back') {
+      navigate('/dashboard')
+    }
+    setPendingAction(null)
   }
 
   function dismissConfirm() {
     setShowCancelConfirm(false)
+    setPendingAction(null)
   }
 
   function handleSave() {
@@ -61,9 +88,11 @@ function Profile() {
     setIsEditing(false)
   }
 
+  const avatarToShow = isEditing ? draftProfile.avatarUrl : savedProfile.avatarUrl
+
   return (
     <div className="profile-page">
-      <button className="profile-back" onClick={() => navigate('/dashboard')}>
+      <button className="profile-back" onClick={handleBack}>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M15 18l-6-6 6-6" />
         </svg>
@@ -77,6 +106,31 @@ function Profile() {
             <button className="profile-edit-btn" onClick={handleEdit}>
               Edit
             </button>
+          )}
+        </div>
+
+        <div className="profile-avatar-row">
+          <div className="profile-avatar">
+            {avatarToShow ? (
+              <img src={avatarToShow} alt="Profile" className="profile-avatar-img" />
+            ) : (
+              <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="1.5" className="profile-avatar-placeholder">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+              </svg>
+            )}
+          </div>
+
+          {isEditing && (
+            <label className="profile-avatar-upload">
+              Change photo
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                hidden
+              />
+            </label>
           )}
         </div>
 
