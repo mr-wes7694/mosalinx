@@ -1,8 +1,7 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
-
-const ProjectContext = createContext(null);
+import { ProjectContext } from "./ProjectContextValue";
 
 const API_URL = "http://localhost:3000/api/projects";
 
@@ -19,7 +18,9 @@ export function ProjectProvider({ children }) {
                 if (!currentUser) {
                     setProjects([]);
                     setActiveProject(null);
-                    setProjectError("You must be signed in to view projects.");
+                    setProjectError(
+                        "You must be signed in to view projects."
+                    );
                     setLoadingProjects(false);
                     return;
                 }
@@ -80,8 +81,4 @@ export function ProjectProvider({ children }) {
             {children}
         </ProjectContext.Provider>
     );
-}
-
-export function useProject() {
-    return useContext(ProjectContext);
 }

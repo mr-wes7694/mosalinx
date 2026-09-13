@@ -6,6 +6,7 @@
     border: 1px solid #ddd;
     border-radius: 12px;
     background-color: #fff;
+    color: #222;
     box-sizing: border-box;
 }
 
@@ -15,6 +16,7 @@
 
 .resource-upload-header h2 {
     margin: 0 0 8px;
+    color: #222;
 }
 
 .resource-upload-header p {
@@ -36,10 +38,13 @@
 
 .upload-field label {
     font-weight: 600;
+    color: #222;
 }
 
 .upload-field input,
 .upload-field select {
+    color: #222;
+    background-color: #fff;
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 6px;

@@ -44,6 +44,7 @@ const uploadResource = async (req, res) => {
 
     let resource = null;
     let firebaseStoragePath = null;
+    let firebaseFileUploaded = false;
 
     try {
         // Find the MySQL user connected to the Firebase account.
@@ -98,6 +99,8 @@ const uploadResource = async (req, res) => {
             },
         });
 
+        firebaseFileUploaded = true;
+
         // Save the Firebase Storage path in MySQL.
         await updateResourceStoragePath(
             resource.resourceId,
@@ -114,7 +117,7 @@ const uploadResource = async (req, res) => {
         console.error('Error uploading resource:', error);
 
         // Remove the Firebase file if it was created.
-        if (firebaseStoragePath) {
+        if (firebaseFileUploaded && firebaseStoragePath) {
             try {
                 await storageBucket
                     .file(firebaseStoragePath)

@@ -1,4 +1,4 @@
-import { useProject } from "../context/ProjectContext";
+import { useProject } from "../context/useProject";
 
 function Workspace() {
     const {

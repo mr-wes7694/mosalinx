@@ -5,7 +5,7 @@ import "./ResourceUpload.css";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-function ResourceUpload({ projectId }) {
+function ResourceUpload({ projectId, onUploadSuccess }) {
     const [selectedFile, setSelectedFile] = useState(null);
     const [category, setCategory] = useState("");
     const [fileError, setFileError] = useState("");
@@ -105,6 +105,10 @@ function ResourceUpload({ projectId }) {
 
             setSelectedFile(null);
             setCategory("");
+
+            if (onUploadSuccess) {
+                await onUploadSuccess();
+            }
 
             const fileInput = document.getElementById("resource-file");
 

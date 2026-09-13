@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { auth } from "../firebase";
-import { useProject } from "../context/ProjectContext";
+import { useProject } from "../context/useProject";
 import ResourceUpload from "../components/ResourceUpload";
 
 const API_URL = "http://localhost:3000/api/resources";
@@ -17,68 +17,72 @@ function Resources() {
     const [error, setError] = useState("");
     const [downloadingId, setDownloadingId] = useState(null);
 
-    useEffect(() => {
-        const loadResources = async () => {
-            if (loadingProjects) {
-                return;
-            }
+    const loadResources = useCallback(async () => {
+        if (loadingProjects) {
+            return;
+        }
 
-            if (projectError) {
-                setError(projectError);
-                setLoading(false);
-                return;
-            }
+        if (projectError) {
+            setError(projectError);
+            setLoading(false);
+            return;
+        }
 
-            if (!activeProject) {
-                setResources([]);
-                setError("No active project is available.");
-                setLoading(false);
-                return;
-            }
+        if (!activeProject) {
+            setResources([]);
+            setError("No active project is available.");
+            setLoading(false);
+            return;
+        }
 
-            const currentUser = auth.currentUser;
+        const currentUser = auth.currentUser;
 
-            if (!currentUser) {
-                setError("You must be signed in to view resources.");
-                setLoading(false);
-                return;
-            }
+        if (!currentUser) {
+            setError("You must be signed in to view resources.");
+            setLoading(false);
+            return;
+        }
 
-            try {
-                setError("");
+        try {
+            setError("");
 
-                const token = await currentUser.getIdToken();
+            const token = await currentUser.getIdToken();
 
-                const response = await fetch(
-                    `${API_URL}/project/${activeProject.project_id}`,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    }
-                );
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(
-                        data.message || "Failed to load resources."
-                    );
+            const response = await fetch(
+                `${API_URL}/project/${activeProject.project_id}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
                 }
+            );
 
-                setResources(data.resources || []);
-            } catch (err) {
-                console.error("Failed to load resources:", err);
-                setError(
-                    err.message || "Failed to load resources."
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to load resources."
                 );
-            } finally {
-                setLoading(false);
             }
-        };
 
-        loadResources();
+            setResources(data.resources || []);
+        } catch (err) {
+            console.error("Failed to load resources:", err);
+            setError(
+                err.message || "Failed to load resources."
+            );
+        } finally {
+            setLoading(false);
+        }
     }, [activeProject, loadingProjects, projectError]);
+
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            loadResources();
+        }, 0);
+
+        return () => clearTimeout(timeoutId);
+    }, [loadResources]);
 
     const handleDownload = async (resource) => {
         const currentUser = auth.currentUser;
@@ -161,6 +165,7 @@ function Resources() {
 
             <ResourceUpload
                 projectId={activeProject.project_id}
+                onUploadSuccess={loadResources}
             />
 
             {error && (
