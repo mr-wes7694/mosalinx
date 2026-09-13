@@ -99,6 +99,26 @@
   font-weight: 500;
 }
 
+.settings-status {
+  max-width: 900px;
+  margin: 12px auto 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #f2f2f2;
+  color: #1a1b1e;
+}
+
+.settings-status--error {
+  background: #fdecec;
+  color: #a12622;
+}
+
+.settings-status--success {
+  background: #edf8ef;
+  color: #256b2f;
+}
+
 .settings-content {
   flex: 1;
   background: #ffffff;
