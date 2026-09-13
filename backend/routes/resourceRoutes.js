@@ -12,7 +12,7 @@ const { verifyFirebaseToken } = require('../middleware');
 
 const router = express.Router();
 
-// Store uploaded files in memory before saving them to local storage.
+// Store uploaded files in memory before uploading them to Firebase Storage.
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
