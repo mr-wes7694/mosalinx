@@ -1,4 +1,4 @@
-const adminAuth = require('../config/firebaseAdmin');
+const { adminAuth } = require('../config/firebaseAdmin');
 
 // Verify the Firebase ID token supplied with protected API requests.
 const verifyFirebaseToken = async (req, res, next) => {
