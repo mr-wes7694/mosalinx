@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './Settings.css'
 
+import { useAuth } from '../hooks/useAuth.js'
+import {
+  getUserSettings,
+  updateUserSettings,
+} from '../services/settingsService.js'
+
 const CATEGORIES = ['General', 'Display', 'Accessibility', 'About']
 
 const DEFAULT_SETTINGS = {
@@ -300,14 +306,57 @@ function AboutSettings() {
 
 function Settings() {
   const navigate = useNavigate()
+  const { currentUser } = useAuth()
+
   const [activeCategory, setActiveCategory] = useState('General')
   const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS)
   const [draftSettings, setDraftSettings] = useState(DEFAULT_SETTINGS)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+
   const isDirty = JSON.stringify(draftSettings) !== JSON.stringify(savedSettings)
 
+  // Load persisted settings for the authenticated user.
+  useEffect(() => {
+    if (!currentUser) return
+
+    let isActive = true
+
+    async function loadSettings() {
+      try {
+        setIsLoading(true)
+        setErrorMessage('')
+
+        const settings = await getUserSettings(currentUser)
+
+        if (!isActive) return
+
+        setSavedSettings(settings)
+        setDraftSettings(settings)
+      } catch (error) {
+        if (isActive) {
+          setErrorMessage(error.message)
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadSettings()
+
+    return () => {
+      isActive = false
+    }
+  }, [currentUser])
+
   function updateField(key, value) {
+    setSuccessMessage('')
     setDraftSettings((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -329,8 +378,27 @@ function Settings() {
     setShowCancelConfirm(false)
   }
 
-  function handleSave() {
-    setSavedSettings(draftSettings)
+  async function handleSave() {
+    if (!currentUser || !isDirty || isSaving) return
+
+    try {
+      setIsSaving(true)
+      setErrorMessage('')
+      setSuccessMessage('')
+
+      const updatedSettings = await updateUserSettings(
+        currentUser,
+        draftSettings
+      )
+
+      setSavedSettings(updatedSettings)
+      setDraftSettings(updatedSettings)
+      setSuccessMessage('Settings saved successfully.')
+    } catch (error) {
+      setErrorMessage(error.message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -344,39 +412,63 @@ function Settings() {
         </button>
 
         {isDirty && (
-          <button className="settings-save" onClick={handleSave}>
-            Save
+          <button
+            className="settings-save"
+            onClick={handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving…' : 'Save'}
           </button>
         )}
       </div>
 
-      <div className="settings-body">
-        <nav className="settings-nav">
-          {CATEGORIES.map((category) => (
-            <button
-              key={category}
-              className={'settings-nav-item' + (activeCategory === category ? ' is-active' : '')}
-              onClick={() => setActiveCategory(category)}
-            >
-              {category}
-            </button>
-          ))}
-        </nav>
-
-        <div className="settings-content">
-          <h1>{activeCategory}</h1>
-          {activeCategory === 'General' && (
-            <GeneralSettings values={draftSettings} onChange={updateField} />
-          )}
-          {activeCategory === 'Display' && (
-            <DisplaySettings values={draftSettings} onChange={updateField} />
-          )}
-          {activeCategory === 'Accessibility' && (
-            <AccessibilitySettings values={draftSettings} onChange={updateField} />
-          )}
-          {activeCategory === 'About' && <AboutSettings />}
+      {isLoading && (
+        <div className="settings-status">
+          Loading settings…
         </div>
-      </div>
+      )}
+
+      {errorMessage && (
+        <div className="settings-status settings-status--error">
+          {errorMessage}
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="settings-status settings-status--success">
+          {successMessage}
+        </div>
+      )}
+
+      {!isLoading && (
+        <div className="settings-body">
+          <nav className="settings-nav">
+            {CATEGORIES.map((category) => (
+              <button
+                key={category}
+                className={'settings-nav-item' + (activeCategory === category ? ' is-active' : '')}
+                onClick={() => setActiveCategory(category)}
+              >
+                {category}
+              </button>
+            ))}
+          </nav>
+
+          <div className="settings-content">
+            <h1>{activeCategory}</h1>
+            {activeCategory === 'General' && (
+              <GeneralSettings values={draftSettings} onChange={updateField} />
+            )}
+            {activeCategory === 'Display' && (
+              <DisplaySettings values={draftSettings} onChange={updateField} />
+            )}
+            {activeCategory === 'Accessibility' && (
+              <AccessibilitySettings values={draftSettings} onChange={updateField} />
+            )}
+            {activeCategory === 'About' && <AboutSettings />}
+          </div>
+        </div>
+      )}
 
       {showCancelConfirm && (
         <div className="settings-modal-overlay" onClick={dismissConfirm}>
