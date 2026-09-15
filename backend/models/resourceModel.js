@@ -73,6 +73,28 @@ const findResourcesByProject = async (projectId) => {
     return rows;
 };
 
+// Search resources within one project.
+const searchResourcesByProject = async (projectId, searchTerm) => {
+    const sql =
+        'SELECT resource_id, project_id, uploaded_by, resource_name, ' +
+        'resource_type, file_size, category, storage_path, uploaded_at, updated_at ' +
+        'FROM resources ' +
+        'WHERE project_id = ? ' +
+        'AND (resource_name LIKE ? OR resource_type LIKE ? OR category LIKE ?) ' +
+        'ORDER BY uploaded_at DESC';
+
+    const searchPattern = `%${searchTerm}%`;
+
+    const [rows] = await pool.query(sql, [
+        projectId,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+    ]);
+
+    return rows;
+};
+
 // Check whether a user belongs to a project.
 const isProjectMember = async (projectId, userId) => {
     const sql =
@@ -93,5 +115,6 @@ module.exports = {
     deleteResourceById,
     findResourceById,
     findResourcesByProject,
+    searchResourcesByProject,
     isProjectMember,
 };
