@@ -1,9 +1,30 @@
 .settings-page {
+  position: relative;
   min-height: 100vh;
   width: 100%;
-  background: #f2f2f2;
+  background: linear-gradient(160deg, #eef7f8 0%, #e4eef0 55%, #dcebee 100%);
   padding: 24px;
   font-family: system-ui, sans-serif;
+  overflow: hidden;
+}
+
+.settings-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('../assets/Mosalinx_logo_min_w_text.svg');
+  background-repeat: no-repeat;
+  background-position: 125% 90%;
+  background-size: 70% auto;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.settings-topbar,
+.settings-body {
+  position: relative;
+  z-index: 1;
 }
 
 .settings-topbar {
@@ -97,26 +118,6 @@
   background: #14bbc4;
   color: #000000;
   font-weight: 500;
-}
-
-.settings-status {
-  max-width: 900px;
-  margin: 12px auto 0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background: #f2f2f2;
-  color: #1a1b1e;
-}
-
-.settings-status--error {
-  background: #fdecec;
-  color: #a12622;
-}
-
-.settings-status--success {
-  background: #edf8ef;
-  color: #256b2f;
 }
 
 .settings-content {
