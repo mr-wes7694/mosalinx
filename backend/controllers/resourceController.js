@@ -4,6 +4,7 @@ const {
     deleteResourceById,
     findResourceById,
     findResourcesByProject,
+    searchResourcesByProject,
     isProjectMember,
 } = require('../models/resourceModel');
 
@@ -201,6 +202,82 @@ const getResourcesByProject = async (req, res) => {
     }
 };
 
+
+// Search resources within a project.
+const searchResources = async (req, res) => {
+    const { projectId } = req.params;
+    const searchTerm =
+        typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+    if (!projectId) {
+        return res.status(400).json({
+            message: 'projectId is required.',
+        });
+    }
+
+    if (!/^[1-9]\d*$/.test(projectId)) {
+        return res.status(400).json({
+            message: 'projectId must be a valid number.',
+        });
+    }
+
+    if (!searchTerm) {
+        return res.status(400).json({
+            message: 'Search query is required.',
+        });
+    }
+
+    if (searchTerm.length > 100) {
+        return res.status(400).json({
+            message: 'Search query cannot exceed 100 characters.',
+        });
+    }
+
+    const firebaseUid = req.user?.uid;
+
+    if (!firebaseUid) {
+        return res.status(401).json({
+            message: 'Unauthorized.',
+        });
+    }
+
+    try {
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Authenticated user is not registered in the database.',
+            });
+        }
+
+        const isMember = await isProjectMember(
+            projectId,
+            user.user_id
+        );
+
+        if (!isMember) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
+
+        const resources = await searchResourcesByProject(
+            projectId,
+            searchTerm
+        );
+
+        return res.status(200).json({
+            resources,
+        });
+    } catch (error) {
+        console.error('Error searching resources:', error);
+
+        return res.status(500).json({
+            message: 'Failed to search resources.',
+        });
+    }
+};
+
 const getResourceById = async (req, res) => {
     const { resourceId } = req.params;
 
@@ -371,6 +448,7 @@ const downloadResource = async (req, res) => {
 module.exports = {
     uploadResource,
     getResourcesByProject,
+    searchResources,
     getResourceById,
     downloadResource,
 };
