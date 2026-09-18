@@ -55,9 +55,16 @@ const lastName = lastNameParts.join(' ')
           <button
             className="shell-icon-btn"
             onClick={() => setSidebarOpen((open) => !open)}
-            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Reveal sidebar'} /* adding a collapse/reveal button for the sidebar. */
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Reveal sidebar'}
           >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <line x1="9" y1="4" x2="9" y2="20" />
             </svg>
