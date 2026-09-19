@@ -176,6 +176,23 @@ CREATE TABLE project_milestones (
     FOREIGN KEY (project_id) REFERENCES projects(project_id)
 );
 
+-- Table for storing calendar events associated with projects
+CREATE TABLE calendar_events (
+    event_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    project_id BIGINT UNSIGNED NOT NULL,
+    created_by BIGINT UNSIGNED NOT NULL,
+    event_title VARCHAR(255) NOT NULL,
+    event_description TEXT,
+    start_datetime DATETIME NOT NULL,
+    end_datetime DATETIME,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (project_id) REFERENCES projects(project_id),
+    FOREIGN KEY (created_by) REFERENCES users(user_id)
+);
+
 -- Table for storing project invitations
 CREATE TABLE invitations (
     invitation_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
