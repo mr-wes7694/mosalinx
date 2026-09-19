@@ -2,6 +2,7 @@ const {
     createResource,
     updateResourceStoragePath,
     deleteResourceById,
+    deleteResourceRecord,
     findResourceById,
     findResourcesByProject,
     searchResourcesByProject,
@@ -13,7 +14,10 @@ const { findProjectMemberRole } = require('../models/projectModel');
 
 const { storageBucket } = require('../config/firebaseAdmin');
 
-const { buildResourceStoragePath } = require('../utils/storage');
+const {
+    buildResourceStoragePath,
+    deleteResourceStorageFile,
+} = require('../utils/storage');
 
 const uploadResource = async (req, res) => {
     // Multer provides req.body for multipart/form-data.
@@ -512,10 +516,18 @@ const deleteResource = async (req, res) => {
             });
         }
 
-        // Authorization passed.
-        // MOS-199 will handle the actual Firebase Storage and MySQL deletion.
+        // Delete the Firebase Storage file first.
+        await deleteResourceStorageFile(
+            resource.storage_path
+        );
+
+        // Delete the MySQL resource record.
+        await deleteResourceRecord(
+            resource.resource_id
+        );
+
         return res.status(200).json({
-            message: 'Resource deletion authorized.',
+            message: 'Resource deleted successfully.',
             resourceId: resource.resource_id,
         });
 
