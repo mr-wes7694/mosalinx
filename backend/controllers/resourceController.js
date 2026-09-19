@@ -9,12 +9,11 @@ const {
 } = require('../models/resourceModel');
 
 const { findUserByFirebaseUid } = require('../models/userModel');
+const { findProjectMemberRole } = require('../models/projectModel');
 
 const { storageBucket } = require('../config/firebaseAdmin');
 
-const {
-    buildResourceStoragePath,
-} = require('../utils/storage');
+const { buildResourceStoragePath } = require('../utils/storage');
 
 const uploadResource = async (req, res) => {
     // Multer provides req.body for multipart/form-data.
@@ -445,10 +444,95 @@ const downloadResource = async (req, res) => {
     }
 };
 
+// Delete a resource after verifying the user's project role.
+const deleteResource = async (req, res) => {
+    const { resourceId } = req.params;
+
+    if (!resourceId) {
+        return res.status(400).json({
+            message: 'resourceId is required.',
+        });
+    }
+
+    // Make sure the resource ID is a positive whole number.
+    if (!/^[1-9]\d*$/.test(resourceId)) {
+        return res.status(400).json({
+            message: 'resourceId must be a valid number.',
+        });
+    }
+
+    const firebaseUid = req.user?.uid;
+
+    if (!firebaseUid) {
+        return res.status(401).json({
+            message: 'Unauthorized.',
+        });
+    }
+
+    try {
+        // Find the resource before checking authorization.
+        const resource = await findResourceById(resourceId);
+
+        if (!resource) {
+            return res.status(404).json({
+                message: 'Resource not found.',
+            });
+        }
+
+        // Find the MySQL user connected to the Firebase account.
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Authenticated user is not registered in the database.',
+            });
+        }
+
+        // Find the user's role within the resource's project.
+        const role = await findProjectMemberRole(
+            resource.project_id,
+            user.user_id
+        );
+
+        if (!role) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
+
+        // The resource uploader can delete their own resource.
+        const isUploader = resource.uploaded_by === user.user_id;
+
+        // Project owners can delete resources uploaded by other members.
+        const isProjectOwner = role.toLowerCase() === 'owner';
+
+        if (!isUploader && !isProjectOwner) {
+            return res.status(403).json({
+                message: 'You are not authorized to delete this resource.',
+            });
+        }
+
+        // Authorization passed.
+        // MOS-199 will handle the actual Firebase Storage and MySQL deletion.
+        return res.status(200).json({
+            message: 'Resource deletion authorized.',
+            resourceId: resource.resource_id,
+        });
+
+    } catch (error) {
+        console.error('Error deleting resource:', error);
+
+        return res.status(500).json({
+            message: 'Failed to delete resource.',
+        });
+    }
+};
+
 module.exports = {
     uploadResource,
     getResourcesByProject,
     searchResources,
     getResourceById,
     downloadResource,
+    deleteResource,
 };
