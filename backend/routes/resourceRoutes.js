@@ -7,6 +7,7 @@ const {
     searchResources,
     getResourceById,
     downloadResource,
+    deleteResource,
 } = require('../controllers/resourceController');
 
 const { verifyFirebaseToken } = require('../middleware');
@@ -49,6 +50,14 @@ router.get(
     '/:resourceId/download',
     verifyFirebaseToken,
     downloadResource
+);
+
+// Delete a resource.
+// Firebase authentication is required before authorization is checked.
+router.delete(
+    '/:resourceId',
+    verifyFirebaseToken,
+    deleteResource
 );
 
 // Get one resource by its ID.
