@@ -51,6 +51,15 @@ const deleteResourceById = async (resourceId) => {
     await pool.query(sql, [resourceId]);
 };
 
+// Delete the MySQL resource record during an authorized resource deletion.
+const deleteResourceRecord = async (resourceId) => {
+    const sql = 'DELETE FROM resources WHERE resource_id = ?';
+
+    const [result] = await pool.query(sql, [resourceId]);
+
+    return result.affectedRows > 0;
+};
+
 const findResourceById = async (resourceId) => {
     const sql =
         'SELECT resource_id, project_id, uploaded_by, resource_name, ' +
@@ -113,6 +122,7 @@ module.exports = {
     createResource,
     updateResourceStoragePath,
     deleteResourceById,
+    deleteResourceRecord,
     findResourceById,
     findResourcesByProject,
     searchResourcesByProject,
