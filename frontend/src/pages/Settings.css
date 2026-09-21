@@ -120,6 +120,26 @@
   font-weight: 500;
 }
 
+.settings-status {
+  max-width: 900px;
+  margin: 12px auto 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #f2f2f2;
+  color: #1a1b1e;
+}
+
+.settings-status--error {
+  background: #fdecec;
+  color: #a12622;
+}
+
+.settings-status--success {
+  background: #edf8ef;
+  color: #256b2f;
+}
+
 .settings-content {
   flex: 1;
   background: #ffffff;
@@ -435,4 +455,57 @@
 
 .settings-modal-discard:hover {
   opacity: 0.88;
+}
+
+@media (max-width: 720px) {
+  .settings-page {
+    padding: 16px;
+  }
+
+  .settings-body {
+    flex-direction: column;
+    max-width: 100%;
+  }
+
+  .settings-nav {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+  }
+
+  .settings-nav-item {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .settings-content {
+    padding: 20px;
+  }
+
+  .settings-theme-grid {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 100%;
+  }
+
+  .settings-color-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .settings-theme-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .settings-pill {
+    padding: 8px 14px;
+    font-size: 0.82rem;
+  }
+
+  .settings-modal {
+    max-width: 90vw;
+  }
 }
