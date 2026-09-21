@@ -324,6 +324,147 @@ Project-specific feature tables will reference `project_id`, including:
 - `activity_logs`
 - `ai_interactions`
 
+## Workspace Posts Implementation
+
+### Purpose
+
+The `workspace_posts` table stores persistent posts created by members within a
+Project Workspace. Workspace Posts support project updates, announcements, ideas,
+and other information intended to remain available to project members.
+
+Workspace Posts are scoped directly to a project and do not require a separate
+`workspaces` table under the current MVP architecture.
+
+### Current Structure
+
+The existing `workspace_posts` table provides the persistence structure required
+for the MVP Workspace Post creation workflow:
+
+- `post_id` - Unique identifier for the Workspace Post.
+- `project_id` - Identifies the project containing the post.
+- `created_by` - Identifies the Mosalinx user who created the post.
+- `post_title` - Optional title for the post.
+- `post_content` - Required post content.
+- `created_at` - Records when the post was created.
+- `updated_at` - Records the most recent update to the post.
+
+The canonical SQL definition remains in `database/schemas/schema.sql`.
+
+### Relationships
+
+Each Workspace Post belongs to one project through `project_id` and one author
+through `created_by`.
+
+The existing foreign-key relationships enforce valid references to:
+
+- `projects.project_id`
+- `users.user_id`
+
+Project membership is represented separately through the `project_members`
+junction table.
+
+### Authorization Strategy
+
+Workspace Post creation authorization will be enforced by the backend rather than
+through an additional database relationship on `workspace_posts`.
+
+When creating a post, the backend must verify that the authenticated user is a
+member of the requested project through the existing `project_members`
+relationship before inserting the post.
+
+This preserves the current relational structure while allowing authorization
+rules to remain within the application layer.
+
+### Workspace Posts and Messages
+
+Workspace Posts and Messages represent separate communication concepts in the
+Mosalinx architecture.
+
+- `workspace_posts` stores persistent project-level posts such as updates,
+  announcements, and ideas.
+- `messages` stores channel-based project communication and references the
+  associated `channels` record.
+
+The two structures should remain separate for the MVP rather than combining
+Workspace Posts with channel Messages.
+
+### Implementation Decision
+
+The existing `workspace_posts` structure was reviewed against the current MVP
+Workspace Post requirements and already provides the required project association,
+author association, content storage, timestamps, primary key, foreign keys, and
+support for future retrieval, editing, and deletion.
+
+No database schema modification or migration is required for the initial Workspace
+Post creation workflow.
+
+Backend implementation can use the existing table directly while independently
+validating authentication, project membership, and submitted post content.
+
+## Calendar Events Implementation
+
+### Purpose
+
+The `calendar_events` table stores persistent calendar events associated with a
+Project Workspace. Calendar events provide the database foundation for project
+scheduling and future Calendar event creation, retrieval, editing, and deletion
+workflows.
+
+Calendar events are scoped directly to a project through the existing Project
+Workspace architecture.
+
+### Current Structure
+
+The `calendar_events` table provides the persistence structure required for the
+initial Calendar event workflow:
+
+- `event_id` - Unique identifier for the Calendar event.
+- `project_id` - Identifies the project containing the event.
+- `created_by` - Identifies the Mosalinx user who created the event.
+- `event_title` - Required title for the event.
+- `event_description` - Optional details or description for the event.
+- `start_datetime` - Required date and time when the event begins.
+- `end_datetime` - Optional date and time when the event ends.
+- `created_at` - Records when the event was created.
+- `updated_at` - Records the most recent update to the event.
+
+The canonical SQL definition is maintained in `database/schemas/schema.sql`.
+
+### Relationships
+
+Each Calendar event belongs to one project through `project_id` and records its
+creator through `created_by`.
+
+Foreign-key relationships enforce valid references to:
+
+- `projects.project_id`
+- `users.user_id`
+
+Project membership and role information remain represented separately through the
+`project_members` junction table.
+
+### Authorization Strategy
+
+Calendar event authorization will be enforced by the backend rather than through
+an additional database relationship on `calendar_events`.
+
+Backend Calendar operations should verify the authenticated user's project
+membership and applicable permissions through the existing `project_members`
+relationship before creating, retrieving, updating, or deleting project events.
+
+### Implementation Decision
+
+The `calendar_events` structure uses `DATETIME` for user-selected event start and
+end values and `TIMESTAMP` fields for database-managed creation and modification
+timestamps.
+
+The structure supports required start times, optional end times and descriptions,
+project and creator associations, automatic timestamps, and referential integrity
+through foreign keys.
+
+This provides the database foundation for the Calendar Event API while keeping
+authorization and workflow validation within the application layer.
+
 ## Immediate Priorities
 
 The initial database foundation has been defined as:
