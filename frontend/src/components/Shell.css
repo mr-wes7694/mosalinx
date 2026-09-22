@@ -21,7 +21,15 @@
 
 .shell-topbar-left {
   display: flex;
+  align-items: center;
   justify-content: flex-start;
+  gap: 12px;
+}
+
+.shell-brand-logo {
+  height: 60px;
+  width: auto;
+  max-width: 540px;
 }
 
 .shell-topbar-center {
