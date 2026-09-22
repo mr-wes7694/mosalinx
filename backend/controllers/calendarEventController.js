@@ -14,13 +14,22 @@ const isValidId = (value) => {
     return /^[1-9]\d*$/.test(String(value));
 };
 
-// Check that a date value is valid.
+// Check that a date value uses a MySQL-safe ISO datetime format.
 const isValidDate = (value) => {
     if (typeof value !== 'string' || !value.trim()) {
         return false;
     }
 
-    return !Number.isNaN(Date.parse(value));
+    const isoDatetimePattern =
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+
+    if (!isoDatetimePattern.test(value)) {
+        return false;
+    }
+
+    const date = new Date(value);
+
+    return !Number.isNaN(date.getTime());
 };
 
 // Validate calendar event fields.
