@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth.js'
 import { logoutUser } from '../services/authService'
 import { ProjectProvider } from '../context/ProjectContext.jsx'
+import logo from '../assets/Mosalinx_logo_min_ver2_horizontal.svg'
 
 const APP_NAMES = {
   '/dashboard': 'Bulletin Board',
@@ -73,6 +74,7 @@ function Shell() {
                 <line x1="9" y1="4" x2="9" y2="20" />
               </svg>
             </button>
+            <img src={logo} alt="Mosalinx" className="shell-brand-logo" />
           </div>
 
           <div className="shell-topbar-center">
