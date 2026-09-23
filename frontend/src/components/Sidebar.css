@@ -5,6 +5,7 @@
   gap: 6px;
   position: relative;
   z-index: 5;
+  box-shadow: 3px 0 12px rgba(0, 0, 0, 0.28);
 }
 
 /* Vertical rail: left / right */
