@@ -344,8 +344,9 @@
 
 .calendar-event-bar {
   pointer-events: auto;
+  box-sizing: border-box;
   display: block;
-  width: 100%;
+  width: calc(100% - 4px);
   padding: 1px 6px;
   margin: 0 2px;
   border: none;

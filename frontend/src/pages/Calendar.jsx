@@ -164,12 +164,12 @@ function Calendar() {
   }
 
   function applyPicker() {
-    setViewDate(new Date(pickerYear, pickerMonth, 1))
+    changeMonth(new Date(pickerYear, pickerMonth, 1))
     setPickerOpen(false)
   }
 
   function jumpToToday() {
-    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1))
+    changeMonth(new Date(today.getFullYear(), today.getMonth(), 1))
     setPickerOpen(false)
   }
 
@@ -192,7 +192,7 @@ function Calendar() {
           setEvents(Array.isArray(data) ? data : [])
           setStatus('success')
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setEvents([])
           setStatus('error')
@@ -206,16 +206,24 @@ function Calendar() {
     }
   }, [year, month, currentUser])
 
+  // Changes the month being viewed and clears any selected day, since a day
+  // selected in one month has no guaranteed equivalent in another (e.g. the
+  // 31st doesn't exist in February) and JS date math would otherwise silently
+  // roll it into a later month instead of leaving the view on the intended one.
+  function changeMonth(newDate) {
+    setViewDate(newDate)
+    setSelectedDay(null)
+    setPanelMode('list')
+    setActiveItem(null)
+    setShowCancelEventConfirm(false)
+  }
+
   function goToPreviousMonth() {
-    setViewDate(new Date(year, month - 1, 1))
+    changeMonth(new Date(year, month - 1, 1))
   }
 
   function goToNextMonth() {
-    setViewDate(new Date(year, month + 1, 1))
-  }
-
-  function dayKey(day) {
-    return `${year}-${month}-${day}`
+    changeMonth(new Date(year, month + 1, 1))
   }
 
   // Range-aware: an item shows up on every day between its start and end, not just its start day.
