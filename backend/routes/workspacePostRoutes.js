@@ -2,6 +2,7 @@ const express = require('express');
 
 const {
     createPost,
+    updatePost,
 } = require('../controllers/workspacePostController');
 const { verifyFirebaseToken } = require('../middleware');
 
@@ -12,6 +13,13 @@ router.post(
     '/',
     verifyFirebaseToken,
     createPost
+);
+
+// Update an existing workspace post.
+router.put(
+    '/:postId',
+    verifyFirebaseToken,
+    updatePost
 );
 
 module.exports = router;
