@@ -353,6 +353,7 @@
   border-radius: 4px;
   font-size: 0.68rem;
   font-weight: 600;
+  transition: filter 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
   line-height: 14px;
   white-space: nowrap;
   overflow: hidden;
@@ -376,6 +377,20 @@
   font-weight: 700;
   text-align: left;
   padding-left: 6px;
+}
+
+/* Only local events render as <button> (backend/"+N more" render as <span>),
+   so this scoping naturally limits the hover treatment to bars that are
+   actually clickable. */
+button.calendar-event-bar:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
+  transform: translateY(-1px);
+}
+
+button.calendar-event-bar:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 1px;
 }
 
 /* ---------- Event type colors ---------- */
@@ -438,6 +453,46 @@
   padding: 18px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   box-sizing: border-box;
+}
+
+.calendar-sidepanel-backdrop {
+  display: none;
+}
+
+/* Below this width, the day/event panel no longer sits side-by-side with the
+   calendar (which was squeezing the grid down to a sliver). Instead it
+   becomes a fixed drawer that overlays the calendar, so the calendar keeps
+   its full width regardless of viewport size. */
+@media (max-width: 860px) {
+  .calendar-layout {
+    position: relative;
+  }
+
+  .calendar-main {
+    width: 100%;
+  }
+
+  .calendar-sidepanel-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 39;
+  }
+
+  .calendar-sidepanel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(340px, 90vw);
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
+    z-index: 40;
+  }
 }
 
 .calendar-sidepanel-header {
@@ -733,6 +788,17 @@
   font-size: 0.72rem;
   color: #999;
   margin-top: 3px;
+}
+
+.calendar-form-error {
+  margin: -6px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fbeaea;
+  border: 1px solid rgba(168, 50, 50, 0.25);
+  color: #a83232;
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .calendar-form-actions {

@@ -148,6 +148,7 @@ function Calendar() {
   const [locationCategory, setLocationCategory] = useState('')
   const [locationDetail, setLocationDetail] = useState('')
   const [eventDescription, setEventDescription] = useState('')
+  const [formError, setFormError] = useState('')
 
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -266,6 +267,7 @@ function Calendar() {
     setLocationCategory('')
     setLocationDetail('')
     setEventDescription('')
+    setFormError('')
   }
 
   function loadFormFromItem(item) {
@@ -278,6 +280,7 @@ function Calendar() {
     setLocationCategory(item.locationCategory || '')
     setLocationDetail(item.locationDetail || '')
     setEventDescription(item.description || '')
+    setFormError('')
   }
 
   function openAddForm() {
@@ -286,6 +289,7 @@ function Calendar() {
   }
 
   function cancelAddForm() {
+    setFormError('')
     setPanelMode('list')
   }
 
@@ -294,8 +298,30 @@ function Calendar() {
     setLocationDetail('')
   }
 
+  // Shared by both the add and manage forms. Returns an error message to show
+  // the person, or '' when the form is good to save.
+  function validateEventForm() {
+    if (!eventTitle.trim()) {
+      return 'Please enter a title for the event.'
+    }
+    if (!startDate || !endDate) {
+      return 'Please choose a start and end date.'
+    }
+    const start = new Date(`${startDate}T${startTime}`)
+    const end = new Date(`${endDate}T${endTime}`)
+    if (end <= start) {
+      return 'End time must be after the start time.'
+    }
+    return ''
+  }
+
   function handleSaveEvent() {
-    if (!eventTitle.trim() || !startDate || !endDate) return
+    const error = validateEventForm()
+    if (error) {
+      setFormError(error)
+      return
+    }
+    setFormError('')
 
     const start = new Date(`${startDate}T${startTime}`)
     const end = new Date(`${endDate}T${endTime}`)
@@ -354,11 +380,19 @@ function Calendar() {
   }
 
   function cancelManageForm() {
+    setFormError('')
     setPanelMode('view')
   }
 
   function handleUpdateEvent() {
-    if (!activeItem || !eventTitle.trim() || !startDate || !endDate) return
+    if (!activeItem) return
+
+    const error = validateEventForm()
+    if (error) {
+      setFormError(error)
+      return
+    }
+    setFormError('')
 
     const start = new Date(`${startDate}T${startTime}`)
     const end = new Date(`${endDate}T${endTime}`)
@@ -499,7 +533,10 @@ function Calendar() {
           className="calendar-form-input"
           placeholder="e.g. Client kickoff call"
           value={eventTitle}
-          onChange={(e) => setEventTitle(e.target.value)}
+          onChange={(e) => {
+            setFormError('')
+            setEventTitle(e.target.value)
+          }}
         />
       </div>
 
@@ -523,13 +560,19 @@ function Calendar() {
             type="date"
             className="calendar-form-input"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => {
+              setFormError('')
+              setStartDate(e.target.value)
+            }}
           />
           <input
             type="time"
             className="calendar-form-input calendar-form-input--time"
             value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
+            onChange={(e) => {
+              setFormError('')
+              setStartTime(e.target.value)
+            }}
           />
         </div>
       </div>
@@ -541,13 +584,19 @@ function Calendar() {
             type="date"
             className="calendar-form-input"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => {
+              setFormError('')
+              setEndDate(e.target.value)
+            }}
           />
           <input
             type="time"
             className="calendar-form-input calendar-form-input--time"
             value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
+            onChange={(e) => {
+              setFormError('')
+              setEndTime(e.target.value)
+            }}
           />
         </div>
       </div>
@@ -786,7 +835,12 @@ function Calendar() {
         </div>
 
         {selectedDay && (
-          <aside className="calendar-sidepanel">
+          <>
+            {/* Only visible/interactive below the responsive breakpoint (see
+                Calendar.css), where the panel becomes a fixed drawer over the
+                calendar instead of a flex sibling squeezing it narrow. */}
+            <div className="calendar-sidepanel-backdrop" onClick={closeSidebar} />
+            <aside className="calendar-sidepanel">
             <div className="calendar-sidepanel-header">
               <h2 className="calendar-sidepanel-date">{selectedDate}</h2>
               <button className="calendar-sidepanel-exit" onClick={closeSidebar} aria-label="Close">
@@ -849,6 +903,9 @@ function Calendar() {
             {panelMode === 'add' && (
               <div className="calendar-event-form">
                 {eventFormFields}
+                {formError && (
+                  <p className="calendar-form-error" role="alert">{formError}</p>
+                )}
                 <div className="calendar-form-actions">
                   <button className="calendar-form-cancel" onClick={cancelAddForm}>Cancel</button>
                   <button className="calendar-form-save" onClick={handleSaveEvent}>Save</button>
@@ -901,6 +958,9 @@ function Calendar() {
             {panelMode === 'manage' && (
               <div className="calendar-event-form">
                 {eventFormFields}
+                {formError && (
+                  <p className="calendar-form-error" role="alert">{formError}</p>
+                )}
                 <div className="calendar-form-actions">
                   <button className="calendar-form-cancel" onClick={cancelManageForm}>Cancel</button>
                   <button className="calendar-form-save" onClick={handleUpdateEvent}>Save</button>
@@ -911,7 +971,8 @@ function Calendar() {
                 </button>
               </div>
             )}
-          </aside>
+            </aside>
+          </>
         )}
       </div>
 
