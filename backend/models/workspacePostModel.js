@@ -48,6 +48,28 @@ const findWorkspacePostById = async (postId) => {
     return rows[0] || null;
 };
 
+// Update a workspace post.
+const updateWorkspacePost = async (
+    postId,
+    postTitle,
+    postContent
+) => {
+    const [result] = await pool.query(
+        `UPDATE workspace_posts
+        SET
+            post_title = ?,
+            post_content = ?
+        WHERE post_id = ?`,
+        [
+            postTitle,
+            postContent,
+            postId,
+        ]
+    );
+
+    return result.affectedRows > 0;
+};
+
 // Delete a workspace post.
 const deleteWorkspacePost = async (postId) => {
     const [result] = await pool.query(
@@ -62,5 +84,6 @@ const deleteWorkspacePost = async (postId) => {
 module.exports = {
     createWorkspacePost,
     findWorkspacePostById,
+    updateWorkspacePost,
     deleteWorkspacePost,
 };
