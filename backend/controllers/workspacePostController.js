@@ -4,6 +4,7 @@ const {
     createWorkspacePost,
     findWorkspacePostById,
     updateWorkspacePost,
+    deleteWorkspacePost,
 } = require('../models/workspacePostModel');
 
 // Create a workspace post for a project.
@@ -17,7 +18,6 @@ const createPost = async (req, res) => {
             });
         }
 
-        // Find the Mosalinx user linked to Firebase.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -28,17 +28,12 @@ const createPost = async (req, res) => {
 
         const { projectId, postTitle, postContent } = req.body;
 
-        // Validate the project ID.
-        if (
-            !Number.isInteger(projectId) ||
-            projectId <= 0
-        ) {
+        if (!Number.isInteger(projectId) || projectId <= 0) {
             return res.status(400).json({
                 message: 'A valid projectId is required.',
             });
         }
 
-        // Post content is required.
         if (
             typeof postContent !== 'string' ||
             !postContent.trim()
@@ -48,7 +43,6 @@ const createPost = async (req, res) => {
             });
         }
 
-        // Validate the optional title.
         if (
             postTitle !== undefined &&
             postTitle !== null &&
@@ -70,7 +64,6 @@ const createPost = async (req, res) => {
             });
         }
 
-        // Check that the user belongs to the project.
         const memberRole = await findProjectMemberRole(
             projectId,
             user.user_id
@@ -89,9 +82,7 @@ const createPost = async (req, res) => {
             postContent.trim()
         );
 
-        return res.status(201).json({
-            post,
-        });
+        return res.status(201).json({ post });
     } catch (error) {
         console.error('Failed to create workspace post:', error);
 
@@ -112,7 +103,6 @@ const updatePost = async (req, res) => {
             });
         }
 
-        // Find the Mosalinx user linked to Firebase.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -123,7 +113,6 @@ const updatePost = async (req, res) => {
 
         const postId = Number(req.params.postId);
 
-        // Validate the post ID.
         if (!Number.isInteger(postId) || postId <= 0) {
             return res.status(400).json({
                 message: 'A valid postId is required.',
@@ -132,7 +121,6 @@ const updatePost = async (req, res) => {
 
         const { postTitle, postContent } = req.body;
 
-        // Post content is required.
         if (
             typeof postContent !== 'string' ||
             !postContent.trim()
@@ -142,7 +130,6 @@ const updatePost = async (req, res) => {
             });
         }
 
-        // Validate the optional title.
         if (
             postTitle !== undefined &&
             postTitle !== null &&
@@ -164,7 +151,6 @@ const updatePost = async (req, res) => {
             });
         }
 
-        // Find the post before attempting to update it.
         const existingPost = await findWorkspacePostById(postId);
 
         if (!existingPost) {
@@ -173,7 +159,6 @@ const updatePost = async (req, res) => {
             });
         }
 
-        // Check that the user belongs to the post's project.
         const memberRole = await findProjectMemberRole(
             existingPost.project_id,
             user.user_id
@@ -185,12 +170,10 @@ const updatePost = async (req, res) => {
             });
         }
 
-        // Only the post creator or project owner can update the post.
         const isPostCreator =
             existingPost.created_by === user.user_id;
 
-        const isProjectOwner =
-            memberRole === 'owner';
+        const isProjectOwner = memberRole === 'owner';
 
         if (!isPostCreator && !isProjectOwner) {
             return res.status(403).json({
@@ -218,7 +201,83 @@ const updatePost = async (req, res) => {
     }
 };
 
+// Delete a workspace post.
+const deletePost = async (req, res) => {
+    try {
+        const firebaseUid = req.user?.uid;
+
+        if (!firebaseUid) {
+            return res.status(401).json({
+                message: 'Authentication required.',
+            });
+        }
+
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Mosalinx user not found.',
+            });
+        }
+
+        const postId = Number(req.params.postId);
+
+        if (!Number.isInteger(postId) || postId <= 0) {
+            return res.status(400).json({
+                message: 'A valid postId is required.',
+            });
+        }
+
+        const post = await findWorkspacePostById(postId);
+
+        if (!post) {
+            return res.status(404).json({
+                message: 'Workspace post not found.',
+            });
+        }
+
+        const memberRole = await findProjectMemberRole(
+            post.project_id,
+            user.user_id
+        );
+
+        if (!memberRole) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
+
+        const isPostCreator = post.created_by === user.user_id;
+        const isProjectOwner = memberRole === 'owner';
+
+        if (!isPostCreator && !isProjectOwner) {
+            return res.status(403).json({
+                message: 'You are not authorized to delete this post.',
+            });
+        }
+
+        const deleted = await deleteWorkspacePost(postId);
+
+        if (!deleted) {
+            return res.status(404).json({
+                message: 'Workspace post not found.',
+            });
+        }
+
+        return res.status(200).json({
+            message: 'Workspace post deleted successfully.',
+        });
+    } catch (error) {
+        console.error('Failed to delete workspace post:', error);
+
+        return res.status(500).json({
+            message: 'Failed to delete workspace post.',
+        });
+    }
+};
+
 module.exports = {
     createPost,
     updatePost,
+    deletePost,
 };
