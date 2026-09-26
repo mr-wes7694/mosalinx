@@ -3,6 +3,7 @@ const express = require('express');
 const {
     createPost,
     updatePost,
+    deletePost,
 } = require('../controllers/workspacePostController');
 const { verifyFirebaseToken } = require('../middleware');
 
@@ -20,6 +21,13 @@ router.put(
     '/:postId',
     verifyFirebaseToken,
     updatePost
+);
+
+// Delete an existing workspace post.
+router.delete(
+    '/:postId',
+    verifyFirebaseToken,
+    deletePost
 );
 
 module.exports = router;

@@ -70,8 +70,20 @@ const updateWorkspacePost = async (
     return result.affectedRows > 0;
 };
 
+// Delete a workspace post.
+const deleteWorkspacePost = async (postId) => {
+    const [result] = await pool.query(
+        `DELETE FROM workspace_posts
+        WHERE post_id = ?`,
+        [postId]
+    );
+
+    return result.affectedRows > 0;
+};
+
 module.exports = {
     createWorkspacePost,
     findWorkspacePostById,
     updateWorkspacePost,
+    deleteWorkspacePost,
 };
