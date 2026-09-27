@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import ResourceCard from "./ResourceCard";
 import "./ResourceSearch.css";
 
 function ResourceSearch({
-    resources = [],
+    searchResults = [],
+    onSearch,
+    onSearchClear,
     onDownload,
     onSearchStateChange,
     downloadingId = null,
@@ -15,33 +17,9 @@ function ResourceSearch({
     const [searchInput, setSearchInput] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
 
-    // Match locally supplied resources against the same fields
-    // supported by the Resource Search backend.
-    const searchResults = useMemo(() => {
-        const normalizedQuery = searchQuery.trim().toLowerCase();
-
-        if (!normalizedQuery) {
-            return [];
-        }
-
-        return resources.filter((resource) => {
-            const searchableFields = [
-                resource.resource_name,
-                resource.resource_type,
-                resource.category,
-            ];
-
-            return searchableFields.some((field) =>
-                String(field || "")
-                    .toLowerCase()
-                    .includes(normalizedQuery)
-            );
-        });
-    }, [resources, searchQuery]);
-
-    // Submit a trimmed search term or restore the default state
-    // when the input contains only whitespace.
-    const handleSubmit = (event) => {
+    // Submit a trimmed search term to the backend or restore the default
+    // repository state when the input contains only whitespace.
+    const handleSubmit = async (event) => {
         event.preventDefault();
 
         const trimmedQuery = searchInput.trim();
@@ -49,6 +27,7 @@ function ResourceSearch({
         if (!trimmedQuery) {
             setSearchInput("");
             setSearchQuery("");
+            onSearchClear?.();
             onSearchStateChange?.(false);
             return;
         }
@@ -56,13 +35,16 @@ function ResourceSearch({
         setSearchInput(trimmedQuery);
         setSearchQuery(trimmedQuery);
         onSearchStateChange?.(true);
+
+        await onSearch?.(trimmedQuery);
     };
 
-    // Clear the active search and return the component
-    // to its default no-search state.
+    // Clear the active search, discard backend search state, and return
+    // to the complete project Resource Repository.
     const handleClear = () => {
         setSearchInput("");
         setSearchQuery("");
+        onSearchClear?.();
         onSearchStateChange?.(false);
     };
 
@@ -175,12 +157,6 @@ function ResourceSearch({
                             Try another name, type, or category.
                         </p>
 
-                        <button
-                            type="button"
-                            onClick={handleClear}
-                        >
-                            Clear Search
-                        </button>
                     </div>
                 )}
 

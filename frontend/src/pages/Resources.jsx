@@ -20,6 +20,12 @@ function Resources() {
     const [error, setError] = useState("");
     const [downloadingId, setDownloadingId] = useState(null);
 
+    // Track backend Resource Search results and request state separately
+    // from the complete project repository.
+    const [searchResults, setSearchResults] = useState([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchError, setSearchError] = useState("");
+
     // Track whether Resource Search is actively displaying a submitted
     // query so the full repository does not duplicate search results.
     const [searchActive, setSearchActive] = useState(false);
@@ -30,6 +36,12 @@ function Resources() {
     // Load all resources belonging to the active project using the
     // existing authenticated Resource API workflow.
     const loadResources = useCallback(async () => {
+        // Clear any previous search state before loading resources for
+        // the current active project.
+        setSearchResults([]);
+        setSearchError("");
+        setSearchActive(false);
+
         if (loadingProjects) {
             return;
         }
@@ -87,6 +99,66 @@ function Resources() {
             setLoading(false);
         }
     }, [activeProject, loadingProjects, projectError]);
+
+    // Search resources within the active project through the authenticated
+    // backend Resource Search endpoint implemented in MOS-194.
+    const handleSearch = async (searchTerm) => {
+        const trimmedQuery = searchTerm.trim();
+
+        if (!trimmedQuery || !activeProject) {
+            return;
+        }
+
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            setSearchError("You must be signed in to search resources.");
+            return;
+        }
+
+        setSearchLoading(true);
+        setSearchError("");
+        setSearchResults([]);
+
+        try {
+            const token = await currentUser.getIdToken();
+
+            const response = await fetch(
+                `${API_URL}/project/${activeProject.project_id}/search?q=${encodeURIComponent(trimmedQuery)}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to search resources."
+                );
+            }
+
+            setSearchResults(data.resources || []);
+        } catch (err) {
+            console.error("Resource search failed:", err);
+            setSearchError(
+                err instanceof TypeError
+                    ? "Unable to connect to Resource Search. Please try again."
+                    : err.message || "Failed to search resources."
+            );
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    // Clear backend search state when the user returns to the
+    // complete project Resource Repository.
+    const handleSearchClear = () => {
+        setSearchResults([]);
+        setSearchError("");
+    };
 
     // Refresh project resources whenever the active project or
     // Resource-loading dependencies change.
@@ -214,14 +286,28 @@ function Resources() {
                     </div>
                 )}
 
+                {/* Display Resource Repository errors independently from
+                    Resource Search request feedback. */}
+                {error && !searchActive && (
+                    <p
+                        className="resource-search-message resource-search-error"
+                        role="alert"
+                    >
+                        {error}
+                    </p>
+                )}
+
                 {/* Keep Resource Search within the same project-scoped
                     repository experience as the standard resource listing. */}
                 <ResourceSearch
-                    resources={resources}
+                    searchResults={searchResults}
+                    onSearch={handleSearch}
+                    onSearchClear={handleSearchClear}
                     onDownload={handleDownload}
                     onSearchStateChange={setSearchActive}
                     downloadingId={downloadingId}
-                    error={error}
+                    loading={searchLoading}
+                    error={searchError}
                 />
 
                 {/* Present the complete project repository independently from
