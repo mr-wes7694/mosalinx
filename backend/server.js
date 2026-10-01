@@ -9,6 +9,7 @@ const projectRoutes = require('./routes/projectRoutes');
 const workspacePostRoutes = require('./routes/workspacePostRoutes');
 const calendarEventRoutes = require('./routes/calendarEventRoutes');
 const commentRoutes = require('./routes/commentRoutes');
+const invitationRoutes = require('./routes/invitationRoutes');
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/workspace-posts', workspacePostRoutes);
 app.use('/api/calendar-events', calendarEventRoutes);
 app.use('/api/workspace-posts', commentRoutes);
+app.use('/api/invitations', invitationRoutes);
 
 app.get('/', (req, res) => {
     res.json({ message: 'Mosalinx backend is running!' });
