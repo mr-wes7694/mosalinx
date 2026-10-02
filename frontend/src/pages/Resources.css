@@ -1,0 +1,143 @@
+/* Provide consistent spacing and width for the complete
+   project Resource Repository experience. */
+.resources-page {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Contain the complete Resource Repository within one cohesive
+   workspace while keeping it distinct from the application shell. */
+.resources-workspace {
+    width: 100%;
+    padding: 28px;
+    box-sizing: border-box;
+    background: rgba(20, 187, 196, 0.08);
+    border: 1px solid rgba(20, 187, 196, 0.35);
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Keep the page title and primary Resource action aligned
+   without separating them from the repository context. */
+.resources-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.resources-page-header h1 {
+    margin: 0 0 8px;
+}
+
+.resources-page-header p {
+    margin: 0;
+}
+
+/* Match the established Mosalinx button pattern with a black
+   default state and teal interaction state. */
+.resources-upload-toggle,
+.resources-empty button {
+    padding: 9px 16px;
+    border: 1px solid #000000;
+    border-radius: 7px;
+    background: #000000;
+    color: #ffffff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        color 0.2s ease;
+}
+
+.resources-upload-toggle:hover,
+.resources-empty button:hover {
+    background: #14bbc4;
+    border-color: #14bbc4;
+    color: #000000;
+}
+
+.resources-upload-toggle:focus-visible,
+.resources-empty button:focus-visible {
+    outline: 2px solid #14bbc4;
+    outline-offset: 2px;
+}
+
+/* Keep the existing upload component contained within the page
+   while allowing its established functionality to remain unchanged. */
+.resources-upload-panel {
+    margin-bottom: 24px;
+}
+
+/* Present the full repository on the same visual surface language
+   used by the Resource Search interface. */
+.resources-repository {
+    margin-top: 24px;
+    padding: 24px;
+    background: #ffffff;
+    border: 1px solid #dddddd;
+    border-radius: 9px;
+    color: #222222;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.resources-repository-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.resources-repository-header h2 {
+    margin: 0 0 6px;
+}
+
+.resources-repository-header p {
+    margin: 0;
+    color: #5f6368;
+}
+
+/* Give an empty repository a deliberate state rather than
+   leaving the user with an unexplained blank area. */
+.resources-empty {
+    padding: 32px 20px;
+    text-align: center;
+    background: #f6f7f8;
+    border: 1px solid #e1e3e6;
+    border-radius: 9px;
+}
+
+.resources-empty h3 {
+    margin: 0 0 8px;
+}
+
+.resources-empty p {
+    margin: 0 0 18px;
+    color: #5f6368;
+}
+
+/* Stack Resource cards with enough separation to keep individual
+   files identifiable while preserving a compact repository layout. */
+.resources-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Preserve the repository hierarchy on smaller screens by stacking
+   actions and Resource content when horizontal space is limited. */
+@media (max-width: 700px) {
+    .resources-page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 14px;
+    }
+
+    .resources-repository {
+        padding: 18px;
+    }
+}

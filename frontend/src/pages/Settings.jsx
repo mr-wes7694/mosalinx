@@ -371,7 +371,6 @@ function Settings() {
   function confirmDiscard() {
     setDraftSettings(savedSettings)
     setShowCancelConfirm(false)
-    navigate('/dashboard')
   }
 
   function dismissConfirm() {
@@ -405,9 +404,11 @@ function Settings() {
     <div className="settings-page">
       <div className="settings-topbar">
         <button className="settings-back" onClick={handleBackOrCancel}>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          {!isDirty && (
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          )}
           {isDirty ? 'Cancel' : 'Back'}
         </button>
 

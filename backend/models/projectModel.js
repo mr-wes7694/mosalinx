@@ -14,6 +14,22 @@ const findProjectsByUserId = async (userId) => {
     return rows;
 };
 
+// Find a user's role within a project.
+const findProjectMemberRole = async (projectId, userId) => {
+    const sql =
+        'SELECT role FROM project_members ' +
+        'WHERE project_id = ? AND user_id = ? ' +
+        'LIMIT 1';
+
+    const [rows] = await pool.query(sql, [
+        projectId,
+        userId,
+    ]);
+
+    return rows[0]?.role || null;
+};
+
 module.exports = {
     findProjectsByUserId,
+    findProjectMemberRole,
 };

@@ -85,16 +85,24 @@ function Sidebar({ position = 'left' }) {
       className={`sidebar sidebar--${position} ${isVertical ? 'sidebar--vertical' : 'sidebar--horizontal'}`}
       aria-label="App navigation"
     >
-      {ITEMS.map((item) => (
-        <button
-          key={item.id}
-          className={'sidebar-item' + (location.pathname === item.path ? ' is-active' : '')}
-          onClick={() => navigate(item.path)}
-        >
-          <span className="sidebar-icon">{item.icon}</span>
-          <span className="sidebar-label">{item.label}</span>
-        </button>
-      ))}
+      {/* The outer <nav> keeps a fixed collapsed-rail size and reserves that
+          space in the shell's flex layout at all times (so toggling the
+          sidebar open/closed in Shell.jsx still flexes .shell-content as
+          expected). This inner layer is what actually grows on hover — as
+          an absolutely-positioned overlay it floats on top of the content
+          instead of resizing it. */}
+      <div className="sidebar-inner">
+        {ITEMS.map((item) => (
+          <button
+            key={item.id}
+            className={'sidebar-item' + (location.pathname === item.path ? ' is-active' : '')}
+            onClick={() => navigate(item.path)}
+          >
+            <span className="sidebar-icon">{item.icon}</span>
+            <span className="sidebar-label">{item.label}</span>
+          </button>
+        ))}
+      </div>
     </nav>
   )
 }

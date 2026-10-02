@@ -51,6 +51,15 @@ const deleteResourceById = async (resourceId) => {
     await pool.query(sql, [resourceId]);
 };
 
+// Delete the MySQL resource record during an authorized resource deletion.
+const deleteResourceRecord = async (resourceId) => {
+    const sql = 'DELETE FROM resources WHERE resource_id = ?';
+
+    const [result] = await pool.query(sql, [resourceId]);
+
+    return result.affectedRows > 0;
+};
+
 const findResourceById = async (resourceId) => {
     const sql =
         'SELECT resource_id, project_id, uploaded_by, resource_name, ' +
@@ -73,6 +82,28 @@ const findResourcesByProject = async (projectId) => {
     return rows;
 };
 
+// Search resources within one project.
+const searchResourcesByProject = async (projectId, searchTerm) => {
+    const sql =
+        'SELECT resource_id, project_id, uploaded_by, resource_name, ' +
+        'resource_type, file_size, category, storage_path, uploaded_at, updated_at ' +
+        'FROM resources ' +
+        'WHERE project_id = ? ' +
+        'AND (resource_name LIKE ? OR resource_type LIKE ? OR category LIKE ?) ' +
+        'ORDER BY uploaded_at DESC';
+
+    const searchPattern = `%${searchTerm}%`;
+
+    const [rows] = await pool.query(sql, [
+        projectId,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+    ]);
+
+    return rows;
+};
+
 // Check whether a user belongs to a project.
 const isProjectMember = async (projectId, userId) => {
     const sql =
@@ -91,7 +122,9 @@ module.exports = {
     createResource,
     updateResourceStoragePath,
     deleteResourceById,
+    deleteResourceRecord,
     findResourceById,
     findResourcesByProject,
+    searchResourcesByProject,
     isProjectMember,
 };

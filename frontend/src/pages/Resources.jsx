@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { auth } from "../firebase";
 import { useProject } from "../context/useProject";
 import ResourceUpload from "../components/ResourceUpload";
+import ResourceSearch from "../components/ResourceSearch";
+import ResourceCard from "../components/ResourceCard";
+import "./Resources.css";
 
 const API_URL = "http://localhost:3000/api/resources";
 
@@ -17,7 +20,28 @@ function Resources() {
     const [error, setError] = useState("");
     const [downloadingId, setDownloadingId] = useState(null);
 
+    // Track backend Resource Search results and request state separately
+    // from the complete project repository.
+    const [searchResults, setSearchResults] = useState([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchError, setSearchError] = useState("");
+
+    // Track whether Resource Search is actively displaying a submitted
+    // query so the full repository does not duplicate search results.
+    const [searchActive, setSearchActive] = useState(false);
+
+    // Control whether the existing Resource Upload form is visible.
+    const [showUpload, setShowUpload] = useState(false);
+
+    // Load all resources belonging to the active project using the
+    // existing authenticated Resource API workflow.
     const loadResources = useCallback(async () => {
+        // Clear any previous search state before loading resources for
+        // the current active project.
+        setSearchResults([]);
+        setSearchError("");
+        setSearchActive(false);
+
         if (loadingProjects) {
             return;
         }
@@ -76,6 +100,68 @@ function Resources() {
         }
     }, [activeProject, loadingProjects, projectError]);
 
+    // Search resources within the active project through the authenticated
+    // backend Resource Search endpoint implemented in MOS-194.
+    const handleSearch = async (searchTerm) => {
+        const trimmedQuery = searchTerm.trim();
+
+        if (!trimmedQuery || !activeProject) {
+            return;
+        }
+
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            setSearchError("You must be signed in to search resources.");
+            return;
+        }
+
+        setSearchLoading(true);
+        setSearchError("");
+        setSearchResults([]);
+
+        try {
+            const token = await currentUser.getIdToken();
+
+            const response = await fetch(
+                `${API_URL}/project/${activeProject.project_id}/search?q=${encodeURIComponent(trimmedQuery)}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to search resources."
+                );
+            }
+
+            setSearchResults(data.resources || []);
+        } catch (err) {
+            console.error("Resource search failed:", err);
+            setSearchError(
+                err instanceof TypeError
+                    ? "Unable to connect to Resource Search. Please try again."
+                    : err.message || "Failed to search resources."
+            );
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    // Clear backend search state when the user returns to the
+    // complete project Resource Repository.
+    const handleSearchClear = () => {
+        setSearchResults([]);
+        setSearchError("");
+    };
+
+    // Refresh project resources whenever the active project or
+    // Resource-loading dependencies change.
     useEffect(() => {
         const timeoutId = setTimeout(() => {
             loadResources();
@@ -84,6 +170,8 @@ function Resources() {
         return () => clearTimeout(timeoutId);
     }, [loadResources]);
 
+    // Download the selected resource through the existing authenticated
+    // Resource API and preserve its stored filename for the user.
     const handleDownload = async (resource) => {
         const currentUser = auth.currentUser;
 
@@ -141,6 +229,12 @@ function Resources() {
         }
     };
 
+    // Toggle the Resource Upload form without changing its existing
+    // upload behavior or backend integration.
+    const handleUploadToggle = () => {
+        setShowUpload((currentValue) => !currentValue);
+    };
+
     if (loadingProjects || loading) {
         return <p>Loading resources...</p>;
     }
@@ -155,68 +249,125 @@ function Resources() {
     }
 
     return (
-        <section>
-            <h1>Resources</h1>
-
-            <p>
-                Manage files for{" "}
-                <strong>{activeProject.project_name}</strong>.
-            </p>
-
-            <ResourceUpload
-                projectId={activeProject.project_id}
-                onUploadSuccess={loadResources}
-            />
-
-            {error && (
-                <p role="alert">
-                    {error}
-                </p>
-            )}
-
-            <section>
-                <h2>Project Resources</h2>
-
-                {resources.length === 0 ? (
-                    <p>No resources found.</p>
-                ) : (
+        <section className="resources-page">
+            <div className="resources-workspace">
+                {/* Introduce the Resource Repository and keep its primary
+                    upload action accessible without permanently showing the form. */}
+                <header className="resources-page-header">
                     <div>
-                        {resources.map((resource) => (
-                            <article key={resource.resource_id}>
-                                <h3>{resource.resource_name}</h3>
+                        <h1>Resources</h1>
+
+                        <p>
+                            Manage files for{" "}
+                            <strong>{activeProject.project_name}</strong>.
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        className="resources-upload-toggle"
+                        onClick={handleUploadToggle}
+                        aria-expanded={showUpload}
+                    >
+                        {showUpload
+                            ? "Cancel"
+                            : "Upload"}
+                    </button>
+                </header>
+
+                {/* Reveal the existing upload workflow only when requested,
+                    preserving its established backend integration. */}
+                {showUpload && (
+                    <div className="resources-upload-panel">
+                        <ResourceUpload
+                            projectId={activeProject.project_id}
+                            onUploadSuccess={loadResources}
+                        />
+                    </div>
+                )}
+
+                {/* Display Resource Repository errors independently from
+                    Resource Search request feedback. */}
+                {error && !searchActive && (
+                    <p
+                        className="resource-search-message resource-search-error"
+                        role="alert"
+                    >
+                        {error}
+                    </p>
+                )}
+
+                {/* Keep Resource Search within the same project-scoped
+                    repository experience as the standard resource listing. */}
+                <ResourceSearch
+                    searchResults={searchResults}
+                    onSearch={handleSearch}
+                    onSearchClear={handleSearchClear}
+                    onDownload={handleDownload}
+                    onSearchStateChange={setSearchActive}
+                    downloadingId={downloadingId}
+                    loading={searchLoading}
+                    error={searchError}
+                />
+
+                {/* Present the complete project repository independently from
+                    active search results so clearing search restores this view. */}
+                {!searchActive && (
+                    <section
+                        className="resources-repository"
+                        aria-labelledby="project-resources-heading"
+                    >
+                        <div className="resources-repository-header">
+                            <div>
+                                <h2 id="project-resources-heading">
+                                    Project Resources
+                                </h2>
 
                                 <p>
-                                    Type:{" "}
-                                    {resource.resource_type ||
-                                        "Unknown"}
+                                    {resources.length}{" "}
+                                    {resources.length === 1
+                                        ? "resource"
+                                        : "resources"}{" "}
+                                    available
                                 </p>
+                            </div>
+                        </div>
+
+                        {/* Distinguish an empty repository from a search that
+                            simply returned no matching results. */}
+                        {resources.length === 0 ? (
+                            <div className="resources-empty">
+                                <h3>No resources yet</h3>
 
                                 <p>
-                                    Category:{" "}
-                                    {resource.category ||
-                                        "Uncategorized"}
+                                    Upload a resource to start building this
+                                    project&apos;s repository.
                                 </p>
 
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        handleDownload(resource)
-                                    }
-                                    disabled={
-                                        downloadingId ===
-                                        resource.resource_id
-                                    }
+                                    onClick={() => setShowUpload(true)}
                                 >
-                                    {downloadingId ===
-                                    resource.resource_id
-                                        ? "Downloading..."
-                                        : "Download"}
+                                    Upload Resource
                                 </button>
-                            </article>
-                        ))}
-                    </div>
+                            </div>
+                        ) : (
+                            <div className="resources-list">
+                                {resources.map((resource) => (
+                                    <ResourceCard
+                                        key={resource.resource_id}
+                                        resource={resource}
+                                        onDownload={handleDownload}
+                                        downloading={
+                                            downloadingId === resource.resource_id
+                                        }
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </section>
                 )}
-            </section>
+            </div>
         </section>
     );
 }
