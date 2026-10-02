@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
-import { getUserProfile } from '../services/profileService.js'
+import { getUserProfile, updateUserProfile } from '../services/profileService.js'
 import './Profile.css'
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say']
@@ -25,6 +25,8 @@ function Profile() {
   const [draftProfile, setDraftProfile] = useState(DEFAULT_PROFILE)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState('')
+  const [saveLoading, setSaveLoading] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'cancel' | 'back'
@@ -85,6 +87,7 @@ function Profile() {
 
   function handleEdit() {
     setDraftProfile(savedProfile)
+    setSaveError('')
     setIsEditing(true)
   }
 
@@ -121,9 +124,40 @@ function Profile() {
     setPendingAction(null)
   }
 
-  function handleSave() {
-    setSavedProfile(draftProfile)
-    setIsEditing(false)
+  async function handleSave() {
+    if (saveLoading) return
+
+    setSaveLoading(true)
+    setSaveError('')
+
+    try {
+      const displayName = `${draftProfile.firstName} ${draftProfile.lastName}`.trim()
+
+      const updates = {
+        displayName,
+        bio: draftProfile.bio || null,
+      }
+
+      const updatedProfile = await updateUserProfile(currentUser, updates)
+
+      const [firstName, ...lastNameParts] = (updatedProfile.displayName ?? '').split(' ')
+      const persistedProfile = {
+        ...savedProfile,
+        firstName: firstName || '',
+        lastName: lastNameParts.join(' '),
+        email: updatedProfile.email ?? savedProfile.email,
+        bio: updatedProfile.bio ?? '',
+        avatarUrl: updatedProfile.profileImageUrl ?? null,
+      }
+
+      setSavedProfile(persistedProfile)
+      setDraftProfile(persistedProfile)
+      setIsEditing(false)
+    } catch (error) {
+      setSaveError(error.message || 'Failed to save profile.')
+    } finally {
+      setSaveLoading(false)
+    }
   }
 
   const avatarToShow = isEditing ? draftProfile.avatarUrl : savedProfile.avatarUrl
@@ -306,9 +340,19 @@ function Profile() {
               />
             </div>
 
+            {saveError && (
+              <p className="profile-save-error">{saveError}</p>
+            )}
+
             <div className="profile-form-actions">
               <button className="profile-cancel-btn" onClick={handleCancel}>Cancel</button>
-              <button className="profile-save-btn" onClick={handleSave}>Save</button>
+              <button
+                className="profile-save-btn"
+                onClick={handleSave}
+                disabled={saveLoading}
+              >
+                {saveLoading ? 'Saving...' : 'Save'}
+              </button>
             </div>
           </div>
         )}
