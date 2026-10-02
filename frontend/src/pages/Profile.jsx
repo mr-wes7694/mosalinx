@@ -1,22 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
+import { getUserProfile } from '../services/profileService.js'
 import './Profile.css'
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say']
 
-function Profile() {
-  const navigate = useNavigate()
-  const { currentUser } = useAuth()
-
-  const displayName = currentUser?.displayName ?? ''
-  const [initialFirst, ...rest] = displayName.split(' ')
-  const initialLast = rest.join(' ')
-
-  const DEFAULT_PROFILE = {
-    firstName: initialFirst || '',
-    lastName: initialLast || '',
-    email: currentUser?.email ?? '',
+const DEFAULT_PROFILE = {
+    firstName: '',
+    lastName: '',
+    email: '',
     birthdate: '',
     gender: '',
     pronouns: '',
@@ -24,11 +17,56 @@ function Profile() {
     avatarUrl: null,
   }
 
+function Profile() {
+  const navigate = useNavigate()
+  const { currentUser, loading: authLoading } = useAuth()
+
   const [savedProfile, setSavedProfile] = useState(DEFAULT_PROFILE)
   const [draftProfile, setDraftProfile] = useState(DEFAULT_PROFILE)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileError, setProfileError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'cancel' | 'back'
+
+  // Load the authenticated user's persisted Mosalinx profile.
+  useEffect(() => {
+    if (authLoading) return
+
+    if (!currentUser) return
+
+    async function loadProfile() {
+      setProfileLoading(true)
+      setProfileError('')
+
+      try {
+        const profile = await getUserProfile(currentUser)
+
+        const [firstName, ...lastNameParts] = (profile.displayName ?? '').split(' ')
+        const loadedProfile = {
+          firstName: firstName || '',
+          lastName: lastNameParts.join(' '),
+          email: profile.email ?? '',
+          birthdate: '',
+          gender: '',
+          pronouns: '',
+          bio: profile.bio ?? '',
+          avatarUrl: profile.profileImageUrl ?? null,
+        }
+
+        setSavedProfile(loadedProfile)
+        setDraftProfile(loadedProfile)
+      } catch (error) {
+        setSavedProfile(DEFAULT_PROFILE)
+        setDraftProfile(DEFAULT_PROFILE)
+        setProfileError(error.message || 'Failed to load user profile.')
+      } finally {
+        setProfileLoading(false)
+      }
+    }
+
+    loadProfile()
+  }, [authLoading, currentUser])
 
   function updateField(key, value) {
     setDraftProfile((prev) => ({ ...prev, [key]: value }))
@@ -89,6 +127,45 @@ function Profile() {
   }
 
   const avatarToShow = isEditing ? draftProfile.avatarUrl : savedProfile.avatarUrl
+
+  // Show controlled UI states while profile data is loading or unavailable.
+  if (authLoading || (currentUser && profileLoading)) {
+    return (
+      <div className="profile-page">
+        <div className="profile-card">
+          <p>Loading profile...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="profile-page">
+        <div className="profile-card">
+          <h1>Profile</h1>
+          <p>You must be signed in to view your profile.</p>
+          <button className="profile-back" onClick={() => navigate('/login')}>
+            Back to Login
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (profileError) {
+    return (
+      <div className="profile-page">
+        <div className="profile-card">
+          <h1>Profile</h1>
+          <p>{profileError}</p>
+          <button className="profile-back" onClick={() => navigate('/dashboard')}>
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="profile-page">
