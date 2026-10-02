@@ -35,6 +35,36 @@ const findInvitationByProjectAndEmail = async (projectId, inviteeEmail) => {
     return rows[0] || null;
 };
 
+// Find pending, non-expired invitations for a user.
+const findPendingInvitationsByEmail = async (inviteeEmail) => {
+    const [rows] = await pool.query(
+        'SELECT ' +
+        'i.invitation_id, ' +
+        'i.project_id, ' +
+        'i.invited_by, ' +
+        'i.invitee_email, ' +
+        'i.role, ' +
+        'i.status, ' +
+        'i.created_at, ' +
+        'i.updated_at, ' +
+        'i.expires_at, ' +
+        'p.project_name, ' +
+        'p.description AS project_description, ' +
+        'u.display_name AS inviter_name, ' +
+        'u.email AS inviter_email ' +
+        'FROM invitations i ' +
+        'INNER JOIN projects p ON i.project_id = p.project_id ' +
+        'INNER JOIN users u ON i.invited_by = u.user_id ' +
+        'WHERE i.invitee_email = ? ' +
+        'AND LOWER(i.status) = ? ' +
+        'AND (i.expires_at IS NULL OR i.expires_at > CURRENT_TIMESTAMP) ' +
+        'ORDER BY i.created_at DESC',
+        [inviteeEmail, 'pending']
+    );
+
+    return rows;
+};
+
 // Create a new project invitation.
 const createInvitation = async (
     projectId,
@@ -56,5 +86,6 @@ module.exports = {
     findProjectById,
     findProjectMember,
     findInvitationByProjectAndEmail,
+    findPendingInvitationsByEmail,
     createInvitation,
 };

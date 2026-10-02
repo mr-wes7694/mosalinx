@@ -4,6 +4,7 @@ const {
     findProjectById,
     findProjectMember,
     findInvitationByProjectAndEmail,
+    findPendingInvitationsByEmail,
     createInvitation,
 } = require('../models/invitationModel');
 
@@ -145,6 +146,44 @@ const createProjectInvitation = async (req, res) => {
     }
 };
 
+// Retrieve pending invitations for the authenticated user.
+const getPendingInvitations = async (req, res) => {
+    try {
+        const firebaseUid = req.user?.uid;
+
+        if (!firebaseUid) {
+            return res.status(401).json({
+                message: 'Authentication required.',
+            });
+        }
+
+        // Find the authenticated Mosalinx user.
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Mosalinx user not found.',
+            });
+        }
+
+        // Return only pending, non-expired invitations for this user.
+        const invitations = await findPendingInvitationsByEmail(
+            user.email
+        );
+
+        return res.status(200).json({
+            invitations,
+        });
+    } catch (error) {
+        console.error('Failed to retrieve pending invitations:', error);
+
+        return res.status(500).json({
+            message: 'Failed to retrieve pending invitations.',
+        });
+    }
+};
+
 module.exports = {
     createProjectInvitation,
+    getPendingInvitations,
 };
