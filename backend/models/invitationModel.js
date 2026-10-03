@@ -35,6 +35,34 @@ const findInvitationByProjectAndEmail = async (projectId, inviteeEmail) => {
     return rows[0] || null;
 };
 
+// Find an invitation by ID with project and inviter information.
+const findInvitationById = async (invitationId) => {
+    const [rows] = await pool.query(
+        'SELECT ' +
+        'i.invitation_id, ' +
+        'i.project_id, ' +
+        'i.invited_by, ' +
+        'i.invitee_email, ' +
+        'i.role, ' +
+        'i.status, ' +
+        'i.created_at, ' +
+        'i.updated_at, ' +
+        'i.expires_at, ' +
+        'p.project_name, ' +
+        'p.description AS project_description, ' +
+        'u.display_name AS inviter_name, ' +
+        'u.email AS inviter_email ' +
+        'FROM invitations i ' +
+        'INNER JOIN projects p ON i.project_id = p.project_id ' +
+        'INNER JOIN users u ON i.invited_by = u.user_id ' +
+        'WHERE i.invitation_id = ? ' +
+        'LIMIT 1',
+        [invitationId]
+    );
+
+    return rows[0] || null;
+};
+
 // Find pending, non-expired invitations for a user.
 const findPendingInvitationsByEmail = async (inviteeEmail) => {
     const [rows] = await pool.query(
@@ -65,6 +93,21 @@ const findPendingInvitationsByEmail = async (inviteeEmail) => {
     return rows;
 };
 
+// Accept a pending invitation for the intended user.
+const acceptInvitation = async (invitationId, inviteeEmail) => {
+    const [result] = await pool.query(
+        'UPDATE invitations ' +
+        'SET status = ? ' +
+        'WHERE invitation_id = ? ' +
+        'AND invitee_email = ? ' +
+        'AND LOWER(status) = ? ' +
+        'AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)',
+        ['accepted', invitationId, inviteeEmail, 'pending']
+    );
+
+    return result.affectedRows;
+};
+
 // Create a new project invitation.
 const createInvitation = async (
     projectId,
@@ -86,6 +129,8 @@ module.exports = {
     findProjectById,
     findProjectMember,
     findInvitationByProjectAndEmail,
+    findInvitationById,
     findPendingInvitationsByEmail,
+    acceptInvitation,
     createInvitation,
 };

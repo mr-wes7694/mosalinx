@@ -18,7 +18,6 @@ const findUserByFirebaseUid = async (firebaseUid) => {
             display_name,
             email,
             profile_image_url,
-            bio,
             created_at,
             updated_at
         FROM users
