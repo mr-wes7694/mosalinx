@@ -1,0 +1,939 @@
+.workspace-page {
+  position: relative;
+  margin: -32px;
+  width: calc(100% + 64px);
+  height: calc(100% + 64px);
+  min-height: calc(100vh - 64px);
+  box-sizing: border-box;
+  background: #f5f5f7;
+  font-family: 'Arial Rounded', system-ui, sans-serif;
+  color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-page button,
+.workspace-page input,
+.workspace-page select,
+.workspace-page textarea {
+  font-family: inherit;
+}
+
+/* ---------- Ribbon ---------- */
+
+.workspace-ribbon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Outlook-style "compose" launchers, pinned to the far left of the ribbon
+   and always enabled outside the tab-strip-and-groups wrapper so they
+   never gray out along with it. */
+.workspace-ribbon-launchers {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.workspace-ribbon-new {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.workspace-ribbon-launch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 68px;
+  padding: 6px 4px;
+  border: none;
+  border-radius: 7px;
+  background: #14bbc4;
+  color: #00282a;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+  white-space: normal;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.workspace-ribbon-launch-btn:hover {
+  opacity: 0.85;
+}
+
+.workspace-ribbon-launch-btn--project {
+  background: #0f8f96;
+  color: #ffffff;
+}
+
+.workspace-ribbon-launch-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.workspace-ribbon-launch-icon {
+  display: inline-flex;
+}
+
+.workspace-ribbon-launch-label {
+  white-space: pre-wrap;
+}
+
+.workspace-ribbon-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-new-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 200px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-new-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #1a1b1e;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-new-menu-item:hover {
+  background: #eef7f8;
+}
+
+.workspace-ribbon-presence {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 10px;
+}
+
+/* ---- Tab strip + groups panel ---- */
+
+/* --ribbon-accent is set inline per-theme (Word blue, Excel green,
+   PowerPoint orange, SQL purple, Code teal-blue) and drives the active
+   tab's underline/highlight below. It lives on .workspace-ribbon-main so it
+   still reaches the context block, which is never grayed out. */
+.workspace-ribbon-tabstrip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 12px 0;
+  overflow-x: auto;
+}
+
+/* Project + file name always enabled, even while the tabs/groups to its
+   right are grayed out, since switching projects shouldn't require a file
+   to already be selected. */
+.workspace-ribbon-context {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  max-width: 320px;
+  font-size: 0.8rem;
+}
+
+.workspace-ribbon-context-select {
+  max-width: 150px;
+  padding: 3px 4px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #1a1b1e;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color-scheme: light;
+}
+
+.workspace-ribbon-context-select:hover {
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.workspace-ribbon-context-select:focus {
+  outline: 2px solid #14bbc4;
+  outline-offset: 1px;
+}
+
+.workspace-ribbon-context-status {
+  color: #8a8d93;
+  font-style: italic;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.workspace-ribbon-context-status--error {
+  color: #a83232;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.workspace-ribbon-context-sep {
+  color: #c4c6c9;
+}
+
+.workspace-ribbon-context-file {
+  color: #4a4d52;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-ribbon-tabdivider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 8px;
+  background: rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.workspace-ribbon-tabslist {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.workspace-ribbon-tabslist.is-disabled {
+  filter: grayscale(1);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.workspace-ribbon-tab {
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: #6b6e73;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.workspace-ribbon-tab:hover {
+  color: var(--ribbon-accent, #14bbc4);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.workspace-ribbon-tab.is-active {
+  color: var(--ribbon-accent, #14bbc4);
+  border-bottom-color: var(--ribbon-accent, #14bbc4);
+}
+
+.workspace-ribbon-tools-wrap {
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.workspace-ribbon-tools-wrap.is-disabled {
+  filter: grayscale(1);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.workspace-ribbon-tools {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 10px 16px 8px;
+  min-height: 72px;
+  box-sizing: border-box;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Each group is a cluster of buttons with a small caption underneath,
+   separated from its neighbor by a thin rule. */
+.workspace-ribbon-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.workspace-ribbon-group:last-child {
+  border-right: none;
+}
+
+.workspace-ribbon-group--placeholder {
+  flex-direction: row;
+  border-right: none;
+  padding-top: 6px;
+}
+
+.workspace-ribbon-group-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-ribbon-group-caption {
+  font-size: 0.68rem;
+  color: #8a8d93;
+  white-space: nowrap;
+}
+
+.workspace-ribbon-btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.workspace-ribbon-hint {
+  font-size: 0.82rem;
+  color: #999;
+  font-style: italic;
+}
+
+.workspace-ribbon-label {
+  font-size: 0.78rem;
+  color: #6b6e73;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.workspace-ribbon-select {
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  color: #2a2c30;
+  font-size: 0.78rem;
+  color-scheme: light;
+}
+
+.workspace-ribbon-select--narrow {
+  width: 48px;
+}
+
+.workspace-ribbon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #2a2c30;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.workspace-ribbon-btn:hover {
+  background: #f2f2f2;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.workspace-ribbon-btn--big {
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  height: 52px;
+  font-size: 0.72rem;
+}
+
+.workspace-ribbon-btn.is-active {
+  background: var(--ribbon-accent, #14bbc4);
+  border-color: var(--ribbon-accent, #14bbc4);
+  color: #ffffff;
+}
+
+.workspace-ribbon-btn--run {
+  background: #4a8f5c;
+  border-color: #4a8f5c;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.workspace-ribbon-btn--run:hover {
+  opacity: 0.88;
+  background: #4a8f5c;
+}
+
+.workspace-presence-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 2px solid #ffffff;
+  margin-left: -6px;
+  cursor: default;
+}
+
+.workspace-presence-avatar:first-child {
+  margin-left: 0;
+}
+
+/* ---------- Body layout ---------- */
+
+.workspace-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ---------- File explorer ---------- */
+
+/* The pane's width collapses all the way to 0. */
+.workspace-explorer {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  transition: width 0.22s ease, border-color 0.22s ease;
+}
+
+.workspace-explorer.is-collapsed {
+  width: 0;
+  border-right-color: transparent;
+}
+
+.workspace-explorer-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 10px 0 34px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  white-space: nowrap;
+}
+
+.workspace-explorer-toolbar-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #8a8d93;
+}
+
+.workspace-explorer-tree {
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace-explorer-tree-inner {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px 0;
+  box-sizing: border-box;
+}
+
+/* Floating toggle handle pinned to a fixed spot in the body's top-left 
+   corner so it never shifts. It sits over the explorer's toolbar when 
+   the pane is open, and over the edge of the main pane once the
+   explorer is fully hidden. */
+.workspace-explorer-toggle {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #6b6e73;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.workspace-explorer-toggle:hover {
+  background: #f0f0f2;
+  color: #0f8f96;
+}
+
+.workspace-explorer-toggle-icon {
+  display: inline-flex;
+  transform: rotate(180deg);
+  transition: transform 0.2s ease;
+}
+
+.workspace-explorer-toggle-icon.is-collapsed {
+  transform: rotate(0deg);
+}
+
+.workspace-explorer-empty {
+  margin: 16px 14px;
+  color: #999;
+  font-size: 0.85rem;
+  font-style: italic;
+  text-align: center;
+}
+
+.workspace-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: #2a2c30;
+  font-size: 0.83rem;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.workspace-tree-row:hover {
+  background: #f0f0f2;
+}
+
+.workspace-tree-row.is-selected {
+  background: #eef7f8;
+  color: #0f8f96;
+  font-weight: 700;
+}
+
+.workspace-tree-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 12px;
+  color: #8a8d93;
+  transition: transform 0.15s ease;
+}
+
+.workspace-tree-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.workspace-tree-row--file .workspace-tree-icon {
+  color: #6b6e73;
+}
+
+.workspace-tree-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: #d9a441;
+}
+
+.workspace-tree-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-tree-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #14bbc4;
+}
+
+/* ---------- Main screen ---------- */
+
+.workspace-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.workspace-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  padding: 40px;
+}
+
+/* ---------- Document ---------- */
+
+.workspace-doc-page {
+  max-width: 680px;
+  min-height: 100%;
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 48px;
+  box-sizing: border-box;
+}
+
+.workspace-doc-textarea {
+  width: 100%;
+  min-height: 500px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: #1a1b1e;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* ---------- Spreadsheet ---------- */
+
+.workspace-sheet-wrap {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  overflow: auto;
+  max-width: 100%;
+}
+
+.workspace-sheet {
+  border-collapse: collapse;
+}
+
+.workspace-sheet th,
+.workspace-sheet td {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 0;
+}
+
+.workspace-sheet-corner,
+.workspace-sheet-colhead,
+.workspace-sheet-rowhead {
+  background: #f5f5f7;
+  color: #8a8d93;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 5px 4px;
+  position: sticky;
+  z-index: 1;
+}
+
+.workspace-sheet-colhead {
+  top: 0;
+  min-width: 90px;
+}
+
+.workspace-sheet-rowhead {
+  left: 0;
+  min-width: 32px;
+}
+
+.workspace-sheet-corner {
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+.workspace-sheet td.is-active {
+  box-shadow: inset 0 0 0 2px #14bbc4;
+}
+
+.workspace-sheet-cell {
+  width: 90px;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+  background: transparent;
+  color: #1a1b1e;
+}
+
+/* ---------- Presentation ---------- */
+
+.workspace-slides-wrap {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+}
+
+.workspace-slides-list {
+  width: 150px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 8px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.workspace-slide-thumb {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #4a4d52;
+  font-size: 0.7rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.workspace-slide-thumb.is-active {
+  border-color: #14bbc4;
+  box-shadow: 0 0 0 2px rgba(20, 187, 196, 0.25);
+}
+
+.workspace-slide-thumb-number {
+  font-weight: 700;
+  color: #8a8d93;
+  font-size: 0.65rem;
+}
+
+.workspace-slide-thumb-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.workspace-slide-canvas {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 32px;
+  box-sizing: border-box;
+  min-height: 420px;
+}
+
+.workspace-slide-title {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #1a1b1e;
+}
+
+.workspace-slide-body {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #2a2c30;
+}
+
+/* ---------- SQL / code editor ---------- */
+
+.workspace-code-wrap {
+  display: flex;
+  height: 100%;
+  min-height: 420px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  color-scheme: dark;
+}
+
+.workspace-code-lines {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 10px;
+  background: #1e1e1e;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: #6b6e73;
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  text-align: right;
+  user-select: none;
+}
+
+.workspace-code-textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 12px;
+  background: #1e1e1e;
+  color: #e4e4e6;
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+/* ---------- New Project modal ---------- */
+
+.workspace-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.workspace-modal {
+  width: 100%;
+  max-width: 380px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+}
+
+.workspace-modal-title {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+  color: #1a1b1e;
+}
+
+.workspace-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.workspace-modal-field label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #444;
+}
+
+.workspace-modal-field input,
+.workspace-modal-field textarea {
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid #ccc;
+  font-size: 0.88rem;
+  color: #1a1b1e;
+  background: #ffffff;
+  color-scheme: light;
+}
+
+.workspace-modal-field input:focus,
+.workspace-modal-field textarea:focus {
+  outline: 2px solid #14bbc4;
+  outline-offset: 1px;
+}
+
+.workspace-modal-field textarea {
+  resize: vertical;
+}
+
+.workspace-modal-error {
+  margin: -4px 0 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fbeaea;
+  border: 1px solid rgba(168, 50, 50, 0.25);
+  color: #a83232;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.workspace-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.workspace-modal-cancel {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #ffffff;
+  color: #1a1b1e;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.workspace-modal-cancel:hover {
+  background: #f2f2f2;
+}
+
+.workspace-modal-create {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: none;
+  background: #14bbc4;
+  color: #000000;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.workspace-modal-create:hover {
+  opacity: 0.85;
+}
+
+.workspace-modal-create:disabled,
+.workspace-modal-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
