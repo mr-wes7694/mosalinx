@@ -21,6 +21,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Find the authenticated Mosalinx user.
         const sender = await findUserByFirebaseUid(firebaseUid);
 
         if (!sender) {
@@ -29,6 +30,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Validate the required request fields.
         const { projectId, inviteeEmail } = req.body;
 
         if (
@@ -54,6 +56,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Validate the recipient email format.
         const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
         if (!emailPattern.test(normalizedEmail)) {
@@ -62,6 +65,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Make sure the target project exists.
         const project = await findProjectById(normalizedProjectId);
 
         if (!project) {
@@ -70,6 +74,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Only project owners can send invitations.
         const senderRole = await findProjectMemberRole(
             normalizedProjectId,
             sender.user_id
@@ -81,6 +86,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // The recipient must already have a Mosalinx account.
         const invitee = await findUserByEmail(normalizedEmail);
 
         if (!invitee) {
@@ -89,6 +95,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Do not create an invitation for an existing project member.
         const existingMember = await findProjectMember(
             normalizedProjectId,
             invitee.user_id
@@ -100,6 +107,7 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Do not create a duplicate invitation for the same project and email.
         const existingInvitation = await findInvitationByProjectAndEmail(
             normalizedProjectId,
             normalizedEmail
