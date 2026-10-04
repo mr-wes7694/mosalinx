@@ -4,7 +4,9 @@ const {
     findProjectById,
     findProjectMember,
     findInvitationByProjectAndEmail,
+    findInvitationById,
     findPendingInvitationsByEmail,
+    acceptInvitation,
     createInvitation,
 } = require('../models/invitationModel');
 
@@ -28,9 +30,9 @@ const createProjectInvitation = async (req, res) => {
             });
         }
 
+        // Validate the required request fields.
         const { projectId, inviteeEmail } = req.body;
 
-        // Validate the required request fields.
         if (
             projectId === undefined ||
             projectId === null ||
@@ -157,7 +159,6 @@ const getPendingInvitations = async (req, res) => {
             });
         }
 
-        // Find the authenticated Mosalinx user.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -166,7 +167,6 @@ const getPendingInvitations = async (req, res) => {
             });
         }
 
-        // Return only pending, non-expired invitations for this user.
         const invitations = await findPendingInvitationsByEmail(
             user.email
         );
@@ -183,7 +183,98 @@ const getPendingInvitations = async (req, res) => {
     }
 };
 
+// Accept a pending invitation for the authenticated user.
+const acceptProjectInvitation = async (req, res) => {
+    try {
+        const firebaseUid = req.user?.uid;
+
+        if (!firebaseUid) {
+            return res.status(401).json({
+                message: 'Authentication required.',
+            });
+        }
+
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Mosalinx user not found.',
+            });
+        }
+
+        const invitationId = Number(req.params.invitationId);
+
+        if (
+            !Number.isSafeInteger(invitationId) ||
+            invitationId <= 0
+        ) {
+            return res.status(400).json({
+                message: 'Invitation ID must be a positive integer.',
+            });
+        }
+
+        const invitation = await findInvitationById(invitationId);
+
+        if (!invitation) {
+            return res.status(404).json({
+                message: 'Invitation not found.',
+            });
+        }
+
+        const normalizedUserEmail = String(user.email).trim().toLowerCase();
+        const normalizedInviteeEmail = String(
+            invitation.invitee_email
+        ).trim().toLowerCase();
+
+        if (normalizedUserEmail !== normalizedInviteeEmail) {
+            return res.status(403).json({
+                message: 'You are not authorized to accept this invitation.',
+            });
+        }
+
+        if (invitation.status?.toLowerCase() !== 'pending') {
+            return res.status(409).json({
+                message: 'Invitation is no longer pending.',
+            });
+        }
+
+        if (
+            invitation.expires_at &&
+            new Date(invitation.expires_at) <= new Date()
+        ) {
+            return res.status(409).json({
+                message: 'Invitation has expired.',
+            });
+        }
+
+        const updatedRows = await acceptInvitation(
+            invitationId,
+            normalizedUserEmail
+        );
+
+        if (updatedRows === 0) {
+            return res.status(409).json({
+                message: 'Invitation could not be accepted.',
+            });
+        }
+
+        const acceptedInvitation = await findInvitationById(invitationId);
+
+        return res.status(200).json({
+            message: 'Invitation accepted successfully.',
+            invitation: acceptedInvitation,
+        });
+    } catch (error) {
+        console.error('Failed to accept project invitation:', error);
+
+        return res.status(500).json({
+            message: 'Failed to accept project invitation.',
+        });
+    }
+};
+
 module.exports = {
     createProjectInvitation,
     getPendingInvitations,
+    acceptProjectInvitation,
 };
