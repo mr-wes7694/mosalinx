@@ -222,14 +222,13 @@ Connects users to projects and stores each member's role within a Mosalinx Proje
 
 This table will include every project member, including the project creator. The creator will automatically receive the `owner` role when the project is created.
 
-#### Proposed Columns
+#### Implemented Columns
 
 | Column | Data Type | Constraints | Purpose |
 |---|---|---|---|
-| `project_member_id` | `BIGINT UNSIGNED` | Primary Key, Auto Increment | Internal membership identifier |
-| `project_id` | `BIGINT UNSIGNED` | Foreign Key, Not Null | Project the user belongs to |
-| `user_id` | `BIGINT UNSIGNED` | Foreign Key, Not Null | User associated with the membership |
-| `role` | `VARCHAR(30)` | Not Null | Member role within the project |
+| `project_id` | `BIGINT UNSIGNED` | Primary Key (Composite), Foreign Key, Not Null | Project the user belongs to |
+| `user_id` | `BIGINT UNSIGNED` | Primary Key (Composite), Foreign Key, Not Null | User associated with the membership |
+| `role` | `VARCHAR(50)` | Not Null, Default `collaborator` | Member role within the project |
 | `joined_at` | `TIMESTAMP` | Default Current Timestamp | Date and time the user joined the project |
 | `updated_at` | `TIMESTAMP` | Auto-updated | Date and time the membership was last updated |
 
@@ -253,7 +252,7 @@ Additional roles or custom permission levels may be added in future versions.
 #### Constraints
 
 - A user may only have one membership record per project.
-- The combination of `project_id` and `user_id` must be unique.
+- The combination of `project_id` and `user_id` forms the composite primary key, enforcing one membership record per user per project.
 - Every project must have one owner for the MVP.
 - The project creator is automatically inserted into this table with the `owner` role.
 - Deleting a project should remove its related membership records.
@@ -275,7 +274,7 @@ Detailed permissions will be enforced by the Express backend rather than relying
 
 The implemented table should include:
 
-- A unique constraint on `project_id` and `user_id`.
+- A composite primary key on `project_id` and `user_id`, enforcing unique project membership.
 - An index on `project_id`.
 - An index on `user_id`.
 - Foreign-key relationships to `projects` and `users`.
