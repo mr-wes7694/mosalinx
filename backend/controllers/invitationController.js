@@ -6,7 +6,7 @@ const {
     findInvitationByProjectAndEmail,
     findInvitationById,
     findPendingInvitationsByEmail,
-    acceptInvitation,
+    acceptInvitationWithMembership,
     createInvitation,
 } = require('../models/invitationModel');
 
@@ -247,12 +247,43 @@ const acceptProjectInvitation = async (req, res) => {
             });
         }
 
-        const updatedRows = await acceptInvitation(
+        const acceptanceResult = await acceptInvitationWithMembership(
             invitationId,
-            normalizedUserEmail
+            normalizedUserEmail,
+            user.user_id
         );
 
-        if (updatedRows === 0) {
+        if (!acceptanceResult.success) {
+            if (acceptanceResult.reason === 'not_found') {
+                return res.status(404).json({
+                    message: 'Invitation not found.',
+                });
+            }
+
+            if (acceptanceResult.reason === 'unauthorized') {
+                return res.status(403).json({
+                    message: 'You are not authorized to accept this invitation.',
+                });
+            }
+
+            if (acceptanceResult.reason === 'not_pending') {
+                return res.status(409).json({
+                    message: 'Invitation is no longer pending.',
+                });
+            }
+
+            if (acceptanceResult.reason === 'expired') {
+                return res.status(409).json({
+                    message: 'Invitation has expired.',
+                });
+            }
+
+            if (acceptanceResult.reason === 'already_member') {
+                return res.status(409).json({
+                    message: 'User is already a member of this project.',
+                });
+            }
+
             return res.status(409).json({
                 message: 'Invitation could not be accepted.',
             });
