@@ -108,6 +108,128 @@ const acceptInvitation = async (invitationId, inviteeEmail) => {
     return result.affectedRows;
 };
 
+// Accept an invitation and create the project membership in one transaction.
+const acceptInvitationWithMembership = async (
+    invitationId,
+    inviteeEmail,
+    userId
+) => {
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        // Lock the invitation while it is being accepted.
+        const [invitationRows] = await connection.query(
+            'SELECT invitation_id, project_id, invitee_email, role, status, expires_at ' +
+            'FROM invitations ' +
+            'WHERE invitation_id = ? ' +
+            'FOR UPDATE',
+            [invitationId]
+        );
+
+        if (invitationRows.length === 0) {
+            await connection.rollback();
+
+            return {
+                success: false,
+                reason: 'not_found',
+            };
+        }
+
+        const invitation = invitationRows[0];
+
+        // Make sure the invitation belongs to the authenticated user.
+        if (
+            String(invitation.invitee_email).trim().toLowerCase() !==
+            String(inviteeEmail).trim().toLowerCase()
+        ) {
+            await connection.rollback();
+
+            return {
+                success: false,
+                reason: 'unauthorized',
+            };
+        }
+
+        // Prevent an invitation from being accepted twice.
+        if (invitation.status?.toLowerCase() !== 'pending') {
+            await connection.rollback();
+
+            return {
+                success: false,
+                reason: 'not_pending',
+            };
+        }
+
+        // Prevent expired invitations from being accepted.
+        if (
+            invitation.expires_at &&
+            new Date(invitation.expires_at) <= new Date()
+        ) {
+            await connection.rollback();
+
+            return {
+                success: false,
+                reason: 'expired',
+            };
+        }
+
+        // Check for an existing membership before inserting.
+        const [memberRows] = await connection.query(
+            'SELECT project_id, user_id, role ' +
+            'FROM project_members ' +
+            'WHERE project_id = ? AND user_id = ? ' +
+            'LIMIT 1 ' +
+            'FOR UPDATE',
+            [invitation.project_id, userId]
+        );
+
+        if (memberRows.length > 0) {
+            await connection.rollback();
+
+            return {
+                success: false,
+                reason: 'already_member',
+            };
+        }
+
+        // Add the accepted user to the project with the invitation role.
+        await connection.query(
+            'INSERT INTO project_members ' +
+            '(project_id, user_id, role) ' +
+            'VALUES (?, ?, ?)',
+            [invitation.project_id, userId, invitation.role]
+        );
+
+        // Mark the invitation as accepted.
+        const [updateResult] = await connection.query(
+            'UPDATE invitations ' +
+            'SET status = ? ' +
+            'WHERE invitation_id = ? ' +
+            'AND LOWER(status) = ?',
+            ['accepted', invitationId, 'pending']
+        );
+
+        if (updateResult.affectedRows !== 1) {
+            throw new Error('Invitation could not be marked as accepted.');
+        }
+
+        await connection.commit();
+
+        return {
+            success: true,
+            projectId: invitation.project_id,
+            role: invitation.role,
+        };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+};
+
 // Create a new project invitation.
 const createInvitation = async (
     projectId,
@@ -132,5 +254,6 @@ module.exports = {
     findInvitationById,
     findPendingInvitationsByEmail,
     acceptInvitation,
+    acceptInvitationWithMembership,
     createInvitation,
 };
