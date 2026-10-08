@@ -29,7 +29,51 @@ const findProjectMemberRole = async (projectId, userId) => {
     return rows[0]?.role || null;
 };
 
+// Create a project and add the creator as the project owner.
+const createProjectWithOwner = async (
+    projectName,
+    description,
+    userId
+) => {
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        // Create the project.
+        const [projectResult] = await connection.query(
+            'INSERT INTO projects (project_name, description) VALUES (?, ?)',
+            [projectName, description]
+        );
+
+        const projectId = projectResult.insertId;
+
+        // Add the creator as the project owner.
+        await connection.query(
+            'INSERT INTO project_members (project_id, user_id, role) ' +
+            'VALUES (?, ?, ?)',
+            [projectId, userId, 'owner']
+        );
+
+        await connection.commit();
+
+        return {
+            projectId,
+            projectName,
+            description,
+            userId,
+            role: 'owner',
+        };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+};
+
 module.exports = {
     findProjectsByUserId,
     findProjectMemberRole,
+    createProjectWithOwner,
 };
