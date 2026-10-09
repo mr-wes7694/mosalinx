@@ -14,6 +14,17 @@ const findProjectsByUserId = async (userId) => {
     return rows;
 };
 
+// Find a project by its ID.
+const findProjectById = async (projectId) => {
+    const [rows] = await pool.query(
+        'SELECT project_id, project_name, description, created_at, updated_at ' +
+        'FROM projects WHERE project_id = ? LIMIT 1',
+        [projectId]
+    );
+
+    return rows[0] || null;
+};
+
 // Find a user's role within a project.
 const findProjectMemberRole = async (projectId, userId) => {
     const sql =
@@ -27,6 +38,32 @@ const findProjectMemberRole = async (projectId, userId) => {
     ]);
 
     return rows[0]?.role || null;
+};
+
+// Update only the project fields provided by the caller.
+const updateProjectDetails = async (projectId, updates) => {
+    const allowedFields = ['project_name', 'description'];
+    const fields = Object.keys(updates).filter(
+        (field) => allowedFields.includes(field)
+    );
+
+    if (fields.length === 0) {
+        return findProjectById(projectId);
+    }
+
+    const assignments = fields
+        .map((field) => `${field} = ?`)
+        .join(', ');
+
+    const values = fields.map((field) => updates[field]);
+    values.push(projectId);
+
+    await pool.query(
+        `UPDATE projects SET ${assignments} WHERE project_id = ?`,
+        values
+    );
+
+    return findProjectById(projectId);
 };
 
 // Create a project and add the creator as the project owner.
@@ -74,6 +111,8 @@ const createProjectWithOwner = async (
 
 module.exports = {
     findProjectsByUserId,
+    findProjectById,
     findProjectMemberRole,
+    updateProjectDetails,
     createProjectWithOwner,
 };
