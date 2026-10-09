@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 const mysql = require('mysql2/promise');
 const config = require('./config');
 
@@ -7,7 +9,15 @@ const pool = mysql.createPool({
     database: config.db.name,
     user: config.db.user,
     password: config.db.password,
-    ssl: config.db.ssl ? { rejectUnauthorized: true } : undefined,
+    ssl: config.db.ssl
+        ? {
+            ca: fs.readFileSync(
+                process.env.DB_SSL_CA_PATH || './certs/ca.pem',
+                'utf8'
+            ),
+            rejectUnauthorized: true,
+        }
+        : undefined,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
