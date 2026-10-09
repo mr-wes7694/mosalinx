@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { ProjectContext } from "./ProjectContextValue";
+import { API_BASE_URL } from "../config/api";
 
-const API_URL = "http://localhost:3000/api/projects";
+const API_URL = `${API_BASE_URL}/api/projects`;
 
 export function ProjectProvider({ children }) {
     const [projects, setProjects] = useState([]);

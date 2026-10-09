@@ -6,6 +6,8 @@ import {
 } from "firebase/auth";
 import { auth } from "../firebase";
 
+import { API_BASE_URL } from "../config/api";
+
 // Register a new user with Firebase and save them to MySQL.
 export const registerUser = async (email, password, displayName) => {
     const userCredential = await createUserWithEmailAndPassword(
@@ -20,7 +22,7 @@ export const registerUser = async (email, password, displayName) => {
         // Get the Firebase authentication token for the new account.
         const token = await user.getIdToken();
 
-        const response = await fetch("http://localhost:3000/api/users/register", {
+        const response = await fetch(`${API_BASE_URL}/api/users/register`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
