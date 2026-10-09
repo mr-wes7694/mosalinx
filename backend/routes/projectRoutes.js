@@ -1,6 +1,9 @@
 const express = require('express');
 
-const { getUserProjects } = require('../controllers/projectController');
+const {
+    getUserProjects,
+    createProject,
+} = require('../controllers/projectController');
 const { verifyFirebaseToken } = require('../middleware');
 
 const router = express.Router();
@@ -10,6 +13,13 @@ router.get(
     '/',
     verifyFirebaseToken,
     getUserProjects
+);
+
+// Create a project for the authenticated user.
+router.post(
+    '/',
+    verifyFirebaseToken,
+    createProject
 );
 
 module.exports = router;
