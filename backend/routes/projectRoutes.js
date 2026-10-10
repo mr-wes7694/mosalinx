@@ -3,6 +3,7 @@ const express = require('express');
 const {
     getUserProjects,
     createProject,
+    updateProject,
 } = require('../controllers/projectController');
 const { verifyFirebaseToken } = require('../middleware');
 
@@ -20,6 +21,13 @@ router.post(
     '/',
     verifyFirebaseToken,
     createProject
+);
+
+// Update an existing project.
+router.patch(
+    '/:projectId',
+    verifyFirebaseToken,
+    updateProject
 );
 
 module.exports = router;
