@@ -18,6 +18,7 @@ const getUserProjects = async (req, res) => {
             });
         }
 
+        // Find the Mosalinx user linked to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -26,6 +27,7 @@ const getUserProjects = async (req, res) => {
             });
         }
 
+        // Only return projects where the user is a member.
         const projects = await findProjectsByUserId(user.user_id);
 
         return res.status(200).json({ projects });
@@ -51,6 +53,7 @@ const createProject = async (req, res) => {
 
         const { project_name, description } = req.body || {};
 
+        // Validate the required project name.
         if (
             typeof project_name !== 'string' ||
             !project_name.trim()
@@ -68,6 +71,7 @@ const createProject = async (req, res) => {
             });
         }
 
+        // Description is optional, but must be a string when provided.
         if (
             description !== undefined &&
             description !== null &&
@@ -91,6 +95,7 @@ const createProject = async (req, res) => {
             });
         }
 
+        // Create the project and owner membership in one transaction.
         const project = await createProjectWithOwner(
             projectName,
             projectDescription,
