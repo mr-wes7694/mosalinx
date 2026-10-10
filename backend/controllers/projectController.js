@@ -87,6 +87,7 @@ const createProject = async (req, res) => {
                 ? description.trim()
                 : null;
 
+        // Find the Mosalinx user linked to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
