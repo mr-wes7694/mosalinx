@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
-import { getUserProfile, updateUserProfile } from '../services/profileService.js'
+import { updateUserProfile } from '../services/profileService.js'
 import './Profile.css'
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say']
@@ -19,56 +19,37 @@ const DEFAULT_PROFILE = {
 
 function Profile() {
   const navigate = useNavigate()
-  const { currentUser, loading: authLoading } = useAuth()
+  const {
+    currentUser,
+    loading: authLoading,
+    userProfile,
+    setUserProfile,
+    profileLoading,
+    profileError,
+  } = useAuth()
 
-  const [savedProfile, setSavedProfile] = useState(DEFAULT_PROFILE)
+  // Derive the saved profile from the shared persisted backend data.
+  const [firstName, ...lastNameParts] = (userProfile?.displayName ?? '').trim().split(/\s+/)
+
+  const savedProfile = userProfile
+    ? {
+        firstName: firstName || '',
+        lastName: lastNameParts.join(' '),
+        email: userProfile.email ?? '',
+        birthdate: '',
+        gender: '',
+        pronouns: '',
+        bio: userProfile.bio ?? '',
+        avatarUrl: userProfile.profileImageUrl ?? null,
+      }
+    : DEFAULT_PROFILE
+
   const [draftProfile, setDraftProfile] = useState(DEFAULT_PROFILE)
-  const [profileLoading, setProfileLoading] = useState(true)
-  const [profileError, setProfileError] = useState('')
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'cancel' | 'back'
-
-  // Load the authenticated user's persisted Mosalinx profile.
-  useEffect(() => {
-    if (authLoading) return
-
-    if (!currentUser) return
-
-    async function loadProfile() {
-      setProfileLoading(true)
-      setProfileError('')
-
-      try {
-        const profile = await getUserProfile(currentUser)
-
-        const [firstName, ...lastNameParts] = (profile.displayName ?? '').split(' ')
-        const loadedProfile = {
-          firstName: firstName || '',
-          lastName: lastNameParts.join(' '),
-          email: profile.email ?? '',
-          birthdate: '',
-          gender: '',
-          pronouns: '',
-          bio: profile.bio ?? '',
-          avatarUrl: profile.profileImageUrl ?? null,
-        }
-
-        setSavedProfile(loadedProfile)
-        setDraftProfile(loadedProfile)
-      } catch (error) {
-        setSavedProfile(DEFAULT_PROFILE)
-        setDraftProfile(DEFAULT_PROFILE)
-        setProfileError(error.message || 'Failed to load user profile.')
-      } finally {
-        setProfileLoading(false)
-      }
-    }
-
-    loadProfile()
-  }, [authLoading, currentUser])
 
   function updateField(key, value) {
     setDraftProfile((prev) => ({ ...prev, [key]: value }))
@@ -140,18 +121,16 @@ function Profile() {
 
       const updatedProfile = await updateUserProfile(currentUser, updates)
 
-      const [firstName, ...lastNameParts] = (updatedProfile.displayName ?? '').split(' ')
-      const persistedProfile = {
-        ...savedProfile,
-        firstName: firstName || '',
-        lastName: lastNameParts.join(' '),
-        email: updatedProfile.email ?? savedProfile.email,
-        bio: updatedProfile.bio ?? '',
-        avatarUrl: updatedProfile.profileImageUrl ?? null,
-      }
+      // Synchronize the account menu with the successfully saved profile.
+      setUserProfile(updatedProfile)
 
-      setSavedProfile(persistedProfile)
-      setDraftProfile(persistedProfile)
+      setDraftProfile((previous) => ({
+        ...previous,
+        firstName: (updatedProfile.displayName ?? '').trim().split(/\s+/)[0] || '',
+        lastName: (updatedProfile.displayName ?? '').trim().split(/\s+/).slice(1).join(' '),
+        bio: updatedProfile.bio ?? '',
+      }))
+
       setIsEditing(false)
     } catch (error) {
       setSaveError(error.message || 'Failed to save profile.')
