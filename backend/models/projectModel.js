@@ -1,4 +1,11 @@
+
 const pool = require('../config/database');
+
+// Roles currently supported by Mosalinx projects.
+const SUPPORTED_PROJECT_ROLES = [
+    'owner',
+    'collaborator',
+];
 
 // Find projects that the user belongs to.
 const findProjectsByUserId = async (userId) => {
@@ -66,6 +73,30 @@ const updateProjectDetails = async (projectId, updates) => {
     return findProjectById(projectId);
 };
 
+// Update the role for an existing project member.
+const updateProjectMemberRole = async (projectId, userId, role) => {
+    if (!SUPPORTED_PROJECT_ROLES.includes(role)) {
+        throw new Error(`Unsupported project role: ${role}`);
+    }
+
+    const sql =
+        'UPDATE project_members ' +
+        'SET role = ? ' +
+        'WHERE project_id = ? AND user_id = ?';
+
+    const [result] = await pool.query(sql, [
+        role,
+        projectId,
+        userId,
+    ]);
+
+    if (result.affectedRows === 0) {
+        return null;
+    }
+
+    return findProjectMemberRole(projectId, userId);
+};
+
 // Create a project and add the creator as the project owner.
 const createProjectWithOwner = async (
     projectName,
@@ -114,5 +145,6 @@ module.exports = {
     findProjectById,
     findProjectMemberRole,
     updateProjectDetails,
+    updateProjectMemberRole,
     createProjectWithOwner,
 };
