@@ -18,7 +18,7 @@ const APP_NAMES = {
 
 function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const { currentUser } = useAuth()
+  const { currentUser, userProfile } = useAuth()
   const [profileOpen, setProfileOpen] = useState(false)
   const profileMenuRef = useRef(null)
 
@@ -34,8 +34,9 @@ function Shell() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const displayName = currentUser?.displayName ?? ''
-  const [firstName, ...lastNameParts] = displayName.split(' ')
+  // Display the user's persisted profile name in the account menu.
+  const displayName = userProfile?.displayName ?? ''
+  const [firstName, ...lastNameParts] = displayName.trim().split(/\s+/)
   const lastName = lastNameParts.join(' ')
 
   const sidebarPosition = 'left'
