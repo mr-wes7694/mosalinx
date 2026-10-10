@@ -937,3 +937,9 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Highlight successful project creation feedback. */
+.workspace-ribbon-context-status--success {
+  color: #32a866;
+  font-weight: 600;
+}
