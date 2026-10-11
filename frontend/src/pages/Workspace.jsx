@@ -310,6 +310,7 @@ function Workspace() {
   const [newProjectDescription, setNewProjectDescription] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [createProjectError, setCreateProjectError] = useState('')
+  const [createProjectSuccess, setCreateProjectSuccess] = useState('')
 
   const handleProjectChange = (event) => {
     const selectedProject = projects.find(
@@ -322,6 +323,7 @@ function Workspace() {
   }
 
   function openNewProjectModal() {
+    setCreateProjectSuccess('')
     setNewProjectName('')
     setNewProjectDescription('')
     setCreateProjectError('')
@@ -341,13 +343,6 @@ function Workspace() {
       return
     }
 
-    if (!createProject) {
-      /* Backend dev: wire up ProjectProvider's createProject and this will
-         start working with no changes needed here. */
-      setCreateProjectError('Project creation isn’t connected to the backend yet.')
-      return
-    }
-
     setCreatingProject(true)
     setCreateProjectError('')
     try {
@@ -355,6 +350,7 @@ function Workspace() {
         project_name: newProjectName.trim(),
         description: newProjectDescription.trim(),
       })
+      setCreateProjectSuccess('Project created successfully!')
       setNewProjectModalOpen(false)
     } catch (error) {
       setCreateProjectError(error.message || 'Failed to create project.')
@@ -966,6 +962,15 @@ function Workspace() {
               shouldn't require a file to be selected first. */}
           <div className="workspace-ribbon-tabstrip" role="tablist">
             <div className="workspace-ribbon-context">
+              {createProjectSuccess && (
+                <span
+                  className="workspace-ribbon-context-status workspace-ribbon-context-status--success"
+                  role="status"
+                >
+                  ✓ {createProjectSuccess}
+                </span>
+              )}
+
               {loadingProjects ? (
                 <span className="workspace-ribbon-context-status">Loading projects…</span>
               ) : projectError ? (

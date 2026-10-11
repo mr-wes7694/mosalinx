@@ -69,6 +69,62 @@ export function ProjectProvider({ children }) {
         return () => unsubscribe();
     }, []);
 
+        // Create a project and synchronize the shared project state.
+        const createProject = async ({ project_name, description }) => {
+            const currentUser = auth.currentUser;
+
+            if (!currentUser) {
+                throw new Error("You must be signed in to create a project.");
+            }
+
+            // Retrieve the current Firebase authentication token.
+            const token = await currentUser.getIdToken();
+
+            // Submit the project details to the backend.
+            let response;
+
+            try {
+                response = await fetch(API_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        project_name,
+                        description,
+                    }),
+                });
+            } catch {
+                throw new Error(
+                    "Unable to connect to the server. Please check your connection and try again."
+                );
+            }
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to create project."
+                );
+            }
+
+            if (!data.project?.project_id) {
+                throw new Error(
+                    "The server did not return the created project."
+                );
+            }
+
+            // Add the persisted project and select it for the workspace.
+            setProjects((previousProjects) => [
+                ...previousProjects,
+                data.project,
+            ]);
+            setActiveProject(data.project);
+
+            return data.project;
+        };
+
     return (
         <ProjectContext.Provider
             value={{
@@ -77,6 +133,7 @@ export function ProjectProvider({ children }) {
                 setActiveProject,
                 loadingProjects,
                 projectError,
+                createProject,
             }}
         >
             {children}
