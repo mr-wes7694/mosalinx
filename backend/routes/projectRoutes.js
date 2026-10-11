@@ -1,8 +1,10 @@
+
 const express = require('express');
 
 const {
     getUserProjects,
     createProject,
+    deleteProject,
 } = require('../controllers/projectController');
 const { verifyFirebaseToken } = require('../middleware');
 
@@ -20,6 +22,13 @@ router.post(
     '/',
     verifyFirebaseToken,
     createProject
+);
+
+// Delete a project after authentication and owner verification.
+router.delete(
+    '/:projectId',
+    verifyFirebaseToken,
+    deleteProject
 );
 
 module.exports = router;
