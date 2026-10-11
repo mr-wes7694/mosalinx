@@ -7,6 +7,8 @@ function ResourceSearch({
     onSearch,
     onSearchClear,
     onDownload,
+    canEditResource,
+    onSaveCategory,
     onSearchStateChange,
     downloadingId = null,
     loading = false,
@@ -188,6 +190,8 @@ function ResourceSearch({
                                     downloading={
                                         downloadingId === resource.resource_id
                                     }
+                                    canEdit={canEditResource?.(resource) ?? false}
+                                    onSaveCategory={onSaveCategory}
                                 />
                             ))}
                         </div>
