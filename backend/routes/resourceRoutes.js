@@ -8,6 +8,7 @@ const {
     getResourceById,
     downloadResource,
     deleteResource,
+    updateResourceMetadata,
 } = require('../controllers/resourceController');
 
 const { verifyFirebaseToken } = require('../middleware');
@@ -50,6 +51,13 @@ router.get(
     '/:resourceId/download',
     verifyFirebaseToken,
     downloadResource
+);
+
+// Update a resource's category after verifying editing permissions.
+router.patch(
+    '/:resourceId',
+    verifyFirebaseToken,
+    updateResourceMetadata
 );
 
 // Delete a resource.

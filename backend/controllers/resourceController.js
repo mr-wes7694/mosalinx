@@ -1,6 +1,7 @@
 const {
     createResource,
     updateResourceStoragePath,
+    updateResourceCategory,
     deleteResourceById,
     deleteResourceRecord,
     findResourceById,
@@ -540,6 +541,109 @@ const deleteResource = async (req, res) => {
     }
 };
 
+// Update resource category after verifying project permissions.
+const updateResourceMetadata = async (req, res) => {
+    const { resourceId } = req.params;
+    const { category } = req.body || {};
+
+    // Validate the resource ID and category before querying the database.
+    if (!/^[1-9]\d*$/.test(resourceId || '')) {
+        return res.status(400).json({
+            message: 'resourceId must be a valid number.',
+        });
+    }
+
+    const validCategories = [
+        'document',
+        'image',
+        'video',
+        'audio',
+        'other',
+    ];
+
+    // Null represents an Uncategorized resource.
+    if (category !== null && !validCategories.includes(category)) {
+        return res.status(400).json({
+            message: 'Please provide a valid resource category.',
+        });
+    }
+
+    const firebaseUid = req.user?.uid;
+
+    if (!firebaseUid) {
+        return res.status(401).json({
+            message: 'Unauthorized.',
+        });
+    }
+
+    try {
+        // Find the resource and its original uploader.
+        const resource = await findResourceById(resourceId);
+
+        if (!resource) {
+            return res.status(404).json({
+                message: 'Resource not found.',
+            });
+        }
+
+        // Resolve the authenticated Firebase user to their MySQL account.
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Authenticated user is not registered in the database.',
+            });
+        }
+
+        // Verify project membership and editing permissions.
+        const role = await findProjectMemberRole(
+            resource.project_id,
+            user.user_id
+        );
+
+        if (!role) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
+
+        const isUploader = resource.uploaded_by === user.user_id;
+        const isProjectOwner = role.toLowerCase() === 'owner';
+
+        if (!isUploader && !isProjectOwner) {
+            return res.status(403).json({
+                message: 'You are not authorized to edit this resource.',
+            });
+        }
+
+        // Update only the category, leaving the stored file unchanged.
+        const wasUpdated = await updateResourceCategory(
+            resource.resource_id,
+            category
+        );
+
+        if (!wasUpdated) {
+            return res.status(404).json({
+                message: 'Resource could not be updated because it no longer exists.',
+            });
+        }
+
+        // Return the updated resource for the frontend.
+        const updatedResource = await findResourceById(resource.resource_id);
+
+        return res.status(200).json({
+            message: 'Resource category updated successfully.',
+            resource: updatedResource,
+        });
+    } catch (error) {
+        console.error('Error updating resource metadata:', error);
+
+        return res.status(500).json({
+            message: 'Failed to update resource metadata.',
+        });
+    }
+};
+
 module.exports = {
     uploadResource,
     getResourcesByProject,
@@ -547,4 +651,5 @@ module.exports = {
     getResourceById,
     downloadResource,
     deleteResource,
+    updateResourceMetadata,
 };
