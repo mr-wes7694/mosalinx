@@ -89,7 +89,7 @@ const searchResourcesByProject = async (projectId, searchTerm) => {
         'resource_type, file_size, category, storage_path, uploaded_at, updated_at ' +
         'FROM resources ' +
         'WHERE project_id = ? ' +
-        'AND (resource_name LIKE ? OR resource_type LIKE ? OR category LIKE ?) ' +
+        'AND (resource_name LIKE ? OR resource_type LIKE ? OR COALESCE(category, \'Uncategorized\') LIKE ?) ' +
         'ORDER BY uploaded_at DESC';
 
     const searchPattern = `%${searchTerm}%`;
