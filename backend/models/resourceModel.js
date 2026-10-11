@@ -44,6 +44,16 @@ const updateResourceStoragePath = async (resourceId, storagePath) => {
     await pool.query(sql, [storagePath, resourceId]);
 };
 
+// Update only the organizational category of an existing resource.
+const updateResourceCategory = async (resourceId, category) => {
+    const sql =
+        'UPDATE resources SET category = ? WHERE resource_id = ?';
+
+    const [result] = await pool.query(sql, [category, resourceId]);
+
+    return result.affectedRows > 0;
+};
+
 // Delete a resource record if the file upload fails.
 const deleteResourceById = async (resourceId) => {
     const sql = 'DELETE FROM resources WHERE resource_id = ?';
@@ -121,6 +131,7 @@ const isProjectMember = async (projectId, userId) => {
 module.exports = {
     createResource,
     updateResourceStoragePath,
+    updateResourceCategory,
     deleteResourceById,
     deleteResourceRecord,
     findResourceById,
