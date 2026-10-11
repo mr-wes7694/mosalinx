@@ -11,10 +11,12 @@ const pool = mysql.createPool({
     password: config.db.password,
     ssl: config.db.ssl
         ? {
-            ca: fs.readFileSync(
-                process.env.DB_SSL_CA_PATH || './certs/ca.pem',
-                'utf8'
-            ),
+            ca: process.env.DB_SSL_CA
+                ? process.env.DB_SSL_CA.replace(/\\n/g, '\n')
+                : fs.readFileSync(
+                    process.env.DB_SSL_CA_PATH || './certs/ca.pem',
+                    'utf8'
+                ),
             rejectUnauthorized: true,
         }
         : undefined,
