@@ -5,7 +5,9 @@ const {
     findProjectMemberRole,
     updateProjectDetails,
     createProjectWithOwner,
+    deleteProjectWithOwner,
 } = require('../models/projectModel');
+const { deleteResourceStorageFile } = require('../utils/storage');
 
 // Get projects that belong to the authenticated user.
 const getUserProjects = async (req, res) => {
@@ -18,7 +20,6 @@ const getUserProjects = async (req, res) => {
             });
         }
 
-        // Find the Mosalinx user linked to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -27,7 +28,6 @@ const getUserProjects = async (req, res) => {
             });
         }
 
-        // Only return projects where the user is a member.
         const projects = await findProjectsByUserId(user.user_id);
 
         return res.status(200).json({ projects });
@@ -53,7 +53,6 @@ const createProject = async (req, res) => {
 
         const { project_name, description } = req.body || {};
 
-        // Validate the required project name.
         if (
             typeof project_name !== 'string' ||
             !project_name.trim()
@@ -71,7 +70,6 @@ const createProject = async (req, res) => {
             });
         }
 
-        // Description is optional, but must be a string when provided.
         if (
             description !== undefined &&
             description !== null &&
@@ -87,7 +85,6 @@ const createProject = async (req, res) => {
                 ? description.trim()
                 : null;
 
-        // Find the Mosalinx user linked to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -96,7 +93,6 @@ const createProject = async (req, res) => {
             });
         }
 
-        // Create the project and owner membership in one transaction.
         const project = await createProjectWithOwner(
             projectName,
             projectDescription,
@@ -120,7 +116,7 @@ const createProject = async (req, res) => {
     }
 };
 
-// Update an existing project. Only project owners may edit its details.
+// Update project details. Only project owners may edit them.
 const updateProject = async (req, res) => {
     try {
         const firebaseUid = req.user?.uid;
@@ -133,7 +129,6 @@ const updateProject = async (req, res) => {
 
         const projectId = req.params.projectId;
 
-        // Require a positive whole-number project ID.
         if (!/^[1-9]\d*$/.test(projectId || '')) {
             return res.status(400).json({
                 message: 'A valid project ID is required.',
@@ -155,7 +150,6 @@ const updateProject = async (req, res) => {
         const allowedFields = ['project_name', 'description'];
         const providedFields = Object.keys(body);
 
-        // Reject unknown fields and requests with nothing to update.
         if (
             providedFields.length === 0 ||
             providedFields.some(
@@ -169,7 +163,6 @@ const updateProject = async (req, res) => {
 
         const updates = {};
 
-        // Validate the name only if it was provided.
         if (Object.hasOwn(body, 'project_name')) {
             if (
                 typeof body.project_name !== 'string' ||
@@ -191,7 +184,6 @@ const updateProject = async (req, res) => {
             updates.project_name = projectName;
         }
 
-        // Allow null to clear the optional description.
         if (Object.hasOwn(body, 'description')) {
             if (
                 body.description !== null &&
@@ -216,7 +208,6 @@ const updateProject = async (req, res) => {
             });
         }
 
-        // Check existence before checking authorization.
         const existingProject = await findProjectById(projectId);
 
         if (!existingProject) {
@@ -259,8 +250,89 @@ const updateProject = async (req, res) => {
     }
 };
 
+// Delete a project after verifying the authenticated user is its owner.
+const deleteProject = async (req, res) => {
+    try {
+        const firebaseUid = req.user?.uid;
+
+        if (!firebaseUid) {
+            return res.status(401).json({
+                message: 'Authentication required.',
+            });
+        }
+
+        const rawProjectId = req.params.projectId;
+
+        if (
+            typeof rawProjectId !== 'string' ||
+            !/^[1-9]\d*$/.test(rawProjectId) ||
+            !Number.isSafeInteger(Number(rawProjectId))
+        ) {
+            return res.status(400).json({
+                message: 'A valid project ID is required.',
+            });
+        }
+
+        const projectId = Number(rawProjectId);
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Mosalinx user not found.',
+            });
+        }
+
+        const result = await deleteProjectWithOwner(
+            projectId,
+            user.user_id
+        );
+
+        if (!result.success && result.reason === 'not_found') {
+            return res.status(404).json({
+                message: 'Project not found.',
+            });
+        }
+
+        if (!result.success && result.reason === 'forbidden') {
+            return res.status(403).json({
+                message: 'Only the project owner can delete this project.',
+            });
+        }
+
+        // Remove stored resource files after the database deletion succeeds.
+        const cleanupResults = await Promise.allSettled(
+            result.storagePaths.map((storagePath) =>
+                deleteResourceStorageFile(storagePath)
+            )
+        );
+
+        const failedCleanups = cleanupResults.filter(
+            (cleanup) => cleanup.status === 'rejected'
+        );
+
+        if (failedCleanups.length > 0) {
+            console.error(
+                `Project ${projectId} was deleted, but ` +
+                `${failedCleanups.length} Firebase file(s) could not be removed.`
+            );
+        }
+
+        return res.status(200).json({
+            message: 'Project deleted successfully.',
+            storageCleanupComplete: failedCleanups.length === 0,
+        });
+    } catch (error) {
+        console.error('Failed to delete project:', error);
+
+        return res.status(500).json({
+            message: 'Failed to delete project.',
+        });
+    }
+};
+
 module.exports = {
     getUserProjects,
     createProject,
     updateProject,
+    deleteProject,
 };
