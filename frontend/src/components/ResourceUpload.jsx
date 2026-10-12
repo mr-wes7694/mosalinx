@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { auth } from "../firebase";
+import { API_BASE_URL } from "../config/api";
 import ResourceCategory from "./ResourceCategory";
 import "./ResourceUpload.css";
 
@@ -83,7 +84,7 @@ function ResourceUpload({ projectId, onUploadSuccess }) {
             }
 
             const response = await fetch(
-                "http://localhost:3000/api/resources/upload",
+                `${API_BASE_URL}/api/resources/upload`,
                 {
                     method: "POST",
                     headers: {

@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useState } from "react";
 import { auth } from "../firebase";
+import { API_BASE_URL } from "../config/api";
 import { useProject } from "../context/useProject";
 import { AuthContext } from "../context/AuthContext.js";
 import ResourceUpload from "../components/ResourceUpload";
@@ -7,7 +8,7 @@ import ResourceSearch from "../components/ResourceSearch";
 import ResourceCard from "../components/ResourceCard";
 import "./Resources.css";
 
-const API_URL = "http://localhost:3000/api/resources";
+const API_URL = `${API_BASE_URL}/api/resources`;
 
 function Resources() {
     // Access the authenticated user's persisted database identity.

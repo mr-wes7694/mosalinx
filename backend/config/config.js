@@ -14,6 +14,7 @@ const config = {
         name: process.env.DB_NAME || 'mosalinx_dev',
         user: process.env.DB_USER || 'mosalinx_dev',
         password: process.env.DB_PASSWORD,
+        ssl: process.env.DB_SSL === 'true',
     },
 
     firebase: {
