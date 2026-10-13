@@ -1,4 +1,6 @@
-const SETTINGS_URL = 'http://localhost:3000/api/users/settings'
+import { API_BASE_URL } from '../config/api'
+
+const SETTINGS_URL = `${API_BASE_URL}/api/users/settings`
 
 // Retrieve account settings for the authenticated Firebase user.
 export async function getUserSettings(user) {
