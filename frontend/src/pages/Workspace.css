@@ -137,8 +137,57 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  margin-left: auto;
   padding-left: 10px;
+}
+
+/* Save & Feed: pushed to the right end of the tab strip row, always
+   enabled independent of the grayed-out tabs. */
+.workspace-ribbon-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 4px 2px 12px;
+}
+
+.workspace-ribbon-pill {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  color: #2a2c30;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.workspace-ribbon-pill:hover {
+  background: #f2f2f2;
+}
+
+.workspace-ribbon-pill.is-active {
+  background: #eef7f8;
+  border-color: #14bbc4;
+  color: #0f8f96;
+}
+
+.workspace-ribbon-pill--primary {
+  background: #14bbc4;
+  border-color: #14bbc4;
+  color: #00282a;
+}
+
+.workspace-ribbon-pill--primary:hover {
+  background: #14bbc4;
+  opacity: 0.85;
+}
+
+.workspace-ribbon-pill:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* ---- Tab strip + groups panel ---- */
@@ -426,7 +475,7 @@
 
 /* ---------- File explorer ---------- */
 
-/* The pane's width collapses all the way to 0. */
+/* The pane's width collapses all the way to 0 */
 .workspace-explorer {
   width: 240px;
   flex-shrink: 0;
@@ -473,10 +522,10 @@
   box-sizing: border-box;
 }
 
-/* Floating toggle handle pinned to a fixed spot in the body's top-left 
-   corner so it never shifts. It sits over the explorer's toolbar when 
-   the pane is open, and over the edge of the main pane once the
-   explorer is fully hidden. */
+/* Floating toggle handle: a sibling of the explorer pane, pinned to a
+   fixed spot in the body's top-left corner so it never shifts. It sits
+   over the explorer's toolbar when the pane is open, and over the edge
+   of the main pane once the explorer is fully hidden. */
 .workspace-explorer-toggle {
   position: absolute;
   top: 6px;
@@ -571,6 +620,14 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.workspace-tree-unsaved {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d9822b;
 }
 
 .workspace-tree-dot {
@@ -852,6 +909,15 @@
   color: #1a1b1e;
 }
 
+.workspace-modal-subtitle {
+  margin: -10px 0 14px;
+  font-size: 0.82rem;
+  color: #8a8d93;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .workspace-modal-field {
   display: flex;
   flex-direction: column;
@@ -938,8 +1004,194 @@
   cursor: not-allowed;
 }
 
-/* Highlight successful project creation feedback. */
-.workspace-ribbon-context-status--success {
-  color: #32a866;
+/* ---------- Feed ---------- */
+
+.workspace-feed {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workspace-feed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspace-feed-title {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #1a1b1e;
+}
+
+.workspace-feed-tabs {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: #e8e9ec;
+}
+
+.workspace-feed-tab {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b6e73;
+  font-size: 0.8rem;
   font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.workspace-feed-tab.is-active {
+  background: #ffffff;
+  color: #1a1b1e;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.workspace-feed-empty {
+  margin: 24px 0;
+  color: #999;
+  font-style: italic;
+  text-align: center;
+}
+
+.workspace-feed-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workspace-feed-post {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  padding: 14px 16px;
+}
+
+.workspace-feed-post-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.workspace-feed-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.workspace-feed-post-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-feed-user {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #1a1b1e;
+}
+
+.workspace-feed-post-file {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #8a8d93;
+}
+
+.workspace-feed-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #0f8f96;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.workspace-feed-file:hover {
+  text-decoration: underline;
+}
+
+.workspace-feed-file--gone {
+  color: #8a8d93;
+  font-weight: 400;
+  text-decoration: line-through;
+  cursor: default;
+}
+
+.workspace-feed-file-icon {
+  display: inline-flex;
+  color: #6b6e73;
+}
+
+.workspace-feed-comment {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #2a2c30;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-feed-changes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.workspace-feed-change {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 0.82rem;
+}
+
+.workspace-feed-change + .workspace-feed-change {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.workspace-feed-change-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-feed-change-user {
+  color: #4a4d52;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-feed-change-time {
+  color: #8a8d93;
+  white-space: nowrap;
 }

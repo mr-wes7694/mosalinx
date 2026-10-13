@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useProject } from '../context/useProject'
+import { auth } from '../firebase'
 import './Workspace.css'
 
-/* ---------- Mock data / file-type definitions ----------
-   No workspace backend exists yet, so the
-   file tree, file contents, and "who else is viewing" presence are all local
-   state seeded with sample data. Swapping in real persistence later means
-   replacing the useState seeds below with fetched data.
-   Editor logic doesn't need to change. */
+// ---------- Mock data / file-type definitions ----------
+// No workspace backend exists yet, so the
+// file tree, file contents, and "who else is viewing" presence are all local
+// state seeded with sample data. Swapping in real persistence later means
+// replacing the useState seeds below with fetched data.
+// Editor logic doesn't need to change.
 
 let idSeed = 1000
 function nextId() {
@@ -92,10 +93,10 @@ const FILE_TYPES = {
 
 const NEW_FILE_ORDER = ['document', 'spreadsheet', 'presentation', 'sql', 'code']
 
-/* Classic MS-Office-style ribbon: a tab strip + grouped tool clusters, with
-   a signature accent color per app (Word blue, Excel green, PowerPoint
-   orange; SQL/code get invented but analogous colors). Document is also the
-   default/placeholder ribbon shown grayed out when nothing is selected. */
+// Classic MS-Office-style ribbon: a tab strip + grouped tool clusters, with
+// a signature accent color per app (Word blue, Excel green, PowerPoint
+// orange; SQL/code get invented but analogous colors). Document is also the
+// default/placeholder ribbon shown grayed out when nothing is selected.
 const RIBBON_THEMES = {
   document: { accent: '#2b579a', tabs: ['Home', 'Insert', 'Design', 'Layout', 'References', 'Review', 'View'] },
   spreadsheet: { accent: '#217346', tabs: ['Home', 'Insert', 'Page Layout', 'Formulas', 'Data', 'Review', 'View'] },
@@ -197,6 +198,70 @@ const INITIAL_TREE = [
   },
 ]
 
+// ---------- Feed (saved-change posts) ----------
+// Saving a change requires a comment, and each save becomes a post:
+// { id, user, fileId, fileName, comment, timestamp }. Like the file tree,
+// posts are local state seeded with samples until a backend exists
+
+const NOW = Date.now()
+const MINUTE = 60 * 1000
+const HOUR = 60 * MINUTE
+
+const INITIAL_POSTS = [
+  {
+    id: 'post-1',
+    user: 'Veronica Johnson',
+    fileId: 'file-budget',
+    fileName: 'Budget.mosheet',
+    comment: 'Updated hosting and licensing costs to match the latest vendor quotes.',
+    timestamp: NOW - 45 * MINUTE,
+  },
+  {
+    id: 'post-2',
+    user: 'Lesly Martinez',
+    fileId: 'file-query',
+    fileName: 'active_users.sql',
+    comment: 'Filtered to active accounts only and sorted by most recent login.',
+    timestamp: NOW - 5 * HOUR,
+  },
+  {
+    id: 'post-3',
+    user: 'Veronica Johnson',
+    fileId: 'file-proposal',
+    fileName: 'Client Proposal.modoc',
+    comment: 'Added the overview section and next steps for stakeholder review.',
+    timestamp: NOW - 26 * HOUR,
+  },
+]
+
+const AVATAR_COLORS = ['#4a8f5c', '#1b3a5c', '#c0392b', '#d9822b', '#5c2d91', '#007acc']
+
+function colorForName(name) {
+  let hash = 0
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) % 997
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function getInitials(name) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+function formatFeedTime(timestamp) {
+  return new Date(timestamp).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 // ---------- Tree helpers (immutable) ----------
 
 function findNode(nodes, id) {
@@ -284,33 +349,39 @@ function Workspace() {
     setActiveProject,
     loadingProjects,
     projectError,
-    /* Not implemented on the backend/provider yet — this is a placeholder
-       contract for the backend dev to fill in: createProject({ project_name,
-       description }) should create the project, add it to `projects`, and
-       set it as the active project (see handleCreateProject below for the
-       exact shape this file calls it with). Until then this is undefined and
-       the "New Project..." form shows a friendly error instead of crashing. */
+    // Not implemented on the backend/provider yet — this is a placeholder
+    // contract for the backend dev to fill in: createProject({ project_name,
+    // description }) should create the project, add it to `projects`, and
+    // set it as the active project (see handleCreateProject below for the
+    // exact shape this file calls it with). Until then this is undefined and
+    // the "New Project..." form shows a friendly error instead of crashing.
     createProject,
   } = useProject()
 
-  /* All hooks run unconditionally, before the loading/error/empty guard
-     clauses below. The file tree itself isn't backed by a project-scoped
-     endpoint yet, so it's seeded once here. */
+  // All hooks run unconditionally, before the loading/error/empty guard
+  // clauses below. The file tree itself isn't backed by a project-scoped
+  // endpoint yet, so it's seeded once here.
   const [tree, setTree] = useState(INITIAL_TREE)
   const [expandedFolders, setExpandedFolders] = useState(
     () => new Set(['folder-docs', 'folder-sheets', 'folder-slides', 'folder-db', 'folder-src'])
   )
-  const [selectedId, setSelectedId] = useState('file-proposal')
+  // No file is selected on load, so the feed is the landing screen.
+  const [selectedId, setSelectedId] = useState(null)
   const [newFileMenuOpen, setNewFileMenuOpen] = useState(false)
   const [activeCell, setActiveCell] = useState('A1')
   const [activeRibbonTab, setActiveRibbonTab] = useState('Home')
   const [explorerOpen, setExplorerOpen] = useState(true)
+  const [feedOpen, setFeedOpen] = useState(false)
+  const [feedView, setFeedView] = useState('posts')
+  const [posts, setPosts] = useState(INITIAL_POSTS)
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [saveComment, setSaveComment] = useState('')
+  const [saveError, setSaveError] = useState('')
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [createProjectError, setCreateProjectError] = useState('')
-  const [createProjectSuccess, setCreateProjectSuccess] = useState('')
 
   const handleProjectChange = (event) => {
     const selectedProject = projects.find(
@@ -323,7 +394,6 @@ function Workspace() {
   }
 
   function openNewProjectModal() {
-    setCreateProjectSuccess('')
     setNewProjectName('')
     setNewProjectDescription('')
     setCreateProjectError('')
@@ -343,6 +413,13 @@ function Workspace() {
       return
     }
 
+    if (!createProject) {
+      // Backend dev: wire up ProjectProvider's createProject and this will
+      // start working with no changes needed here.
+      setCreateProjectError('Project creation isn’t connected to the backend yet.')
+      return
+    }
+
     setCreatingProject(true)
     setCreateProjectError('')
     try {
@@ -350,7 +427,6 @@ function Workspace() {
         project_name: newProjectName.trim(),
         description: newProjectDescription.trim(),
       })
-      setCreateProjectSuccess('Project created successfully!')
       setNewProjectModalOpen(false)
     } catch (error) {
       setCreateProjectError(error.message || 'Failed to create project.')
@@ -378,11 +454,61 @@ function Workspace() {
     setActiveCell('A1')
     setNewFileMenuOpen(false)
     setActiveRibbonTab('Home')
+    // Picking a file always brings it to the front, even if the feed was
+    // open over the previous one.
+    setFeedOpen(false)
   }
 
-  function updateSelectedFile(updater) {
+  // Any real edit flags the file as having unsaved changes (node.dirty),
+  // which is what enables the Save button. Pass markDirty = false for
+  // view-only state like which slide is showing.
+  function updateSelectedFile(updater, markDirty = true) {
     if (!selectedId) return
-    setTree((prev) => updateNode(prev, selectedId, (node) => ({ ...node, ...updater(node) })))
+    setTree((prev) =>
+      updateNode(prev, selectedId, (node) => {
+        const changes = updater(node)
+        if (Object.keys(changes).length === 0) return node
+        return { ...node, ...changes, ...(markDirty ? { dirty: true } : {}) }
+      })
+    )
+  }
+
+  function openSaveModal() {
+    if (!selectedNode?.dirty) return
+    setSaveComment('')
+    setSaveError('')
+    setSaveModalOpen(true)
+  }
+
+  function closeSaveModal() {
+    setSaveModalOpen(false)
+  }
+
+  // Saving requires a comment; the save is recorded as a feed post and the
+  // file's unsaved flag is cleared.
+  function handleSaveChange(event) {
+    event.preventDefault()
+    const comment = saveComment.trim()
+    if (!comment) {
+      setSaveError('Please add a comment describing your change.')
+      return
+    }
+    if (!selectedNode) return
+
+    const user = auth.currentUser?.displayName || auth.currentUser?.email || 'You'
+    setPosts((prev) => [
+      {
+        id: nextId(),
+        user,
+        fileId: selectedNode.id,
+        fileName: selectedNode.name,
+        comment,
+        timestamp: Date.now(),
+      },
+      ...prev,
+    ])
+    setTree((prev) => updateNode(prev, selectedNode.id, (node) => ({ ...node, dirty: false })))
+    setSaveModalOpen(false)
   }
 
   function createNewFile(type) {
@@ -390,7 +516,8 @@ function Workspace() {
     const count = countFilesOfType(tree, type) + 1
     const baseName = `Untitled ${typeInfo.label} ${count}`
     const name = type === 'code' ? `${baseName}.js` : `${baseName}${typeInfo.extension}`
-    const newNode = buildEmptyFileNode(type, name)
+    // A brand-new file starts out unsaved so it can be posted to the feed.
+    const newNode = { ...buildEmptyFileNode(type, name), dirty: true }
 
     let targetFolder = 'ROOT'
     if (selectedNode) {
@@ -406,6 +533,7 @@ function Workspace() {
     setActiveCell('A1')
     setNewFileMenuOpen(false)
     setActiveRibbonTab('Home')
+    setFeedOpen(false)
   }
 
   // ---------- Ribbon tool actions ----------
@@ -461,7 +589,7 @@ function Workspace() {
   }
 
   function setActiveSlideIndex(idx) {
-    updateSelectedFile(() => ({ activeSlideIndex: idx }))
+    updateSelectedFile(() => ({ activeSlideIndex: idx }), false)
   }
 
   function updateSlideField(field, value) {
@@ -514,19 +642,22 @@ function Workspace() {
         >
           <span className="workspace-tree-icon">{typeInfo?.icon ?? ICONS.document}</span>
           <span className="workspace-tree-label">{node.name}</span>
+          {node.dirty && (
+            <span className="workspace-tree-unsaved" title="Unsaved changes" aria-label="Unsaved changes" />
+          )}
           {node.viewers?.length > 0 && <span className="workspace-tree-dot" aria-hidden="true" />}
         </button>
       )
     })
   }
 
-  /* A ribbon "group" is Office's unit of organization: a cluster of related
-     buttons with a small caption underneath (e.g. "Font", "Paragraph",
-     "Clipboard"). Most groups below mix real, wired-up controls (Bold/Align,
-     cell formatting, slide management, Run) with purely decorative ones
-     (Paste/Cut/Copy, font-name pickers, style galleries) that exist to sell
-     the authentic Office look. Those are plain buttons with no onClick, so
-     they're visually present but inert rather than faking functionality. */
+  // A ribbon "group" is Office's unit of organization: a cluster of related
+  // buttons with a small caption underneath (e.g. "Font", "Paragraph",
+  // "Clipboard"). Most groups below mix real, wired-up controls (Bold/Align,
+  // cell formatting, slide management, Run) with purely decorative ones
+  // (Paste/Cut/Copy, font-name pickers, style galleries) that exist to sell
+  // the authentic Office look — those are plain buttons with no onClick, so
+  // they're visually present but inert rather than faking functionality.
 
   function RibbonButton({ active, big, onClick, children, ...rest }) {
     return (
@@ -564,13 +695,14 @@ function Workspace() {
     )
   }
 
-  /* When the ribbon is disabled there's no real node to read formatting
-    state from. This stands in so the Word/document groups can still render
-    their inert placeholder state instead of crashing on selectedNode.bold etc. */
+  // When the ribbon is disabled (no file selected, or a folder is
+  // selected) there's no real node to read formatting state from — this
+  // stands in so the Word/document groups can still render their inert
+  // placeholder state instead of crashing on selectedNode.bold etc.
   const DISABLED_NODE_STATE = { bold: false, italic: false, underline: false, align: 'left', formats: {}, cells: {} }
 
   function renderHomeGroups() {
-    const node = ribbonDisabled ? DISABLED_NODE_STATE : selectedNode
+    const node = hasFile ? selectedNode : DISABLED_NODE_STATE
     switch (effectiveType) {
       case 'document':
         return (
@@ -755,6 +887,83 @@ function Workspace() {
     return renderHomeGroups()
   }
 
+  // A file name in the feed opens that file (if it still exists in the tree).
+  function renderFeedFileLink(post) {
+    const node = findNode(tree, post.fileId)
+    if (!node) {
+      return <span className="workspace-feed-file workspace-feed-file--gone">{post.fileName}</span>
+    }
+    return (
+      <button type="button" className="workspace-feed-file" onClick={() => selectNode(node.id)}>
+        <span className="workspace-feed-file-icon">{FILE_TYPES[node.type]?.icon ?? ICONS.document}</span>
+        {post.fileName}
+      </button>
+    )
+  }
+
+  function renderFeed() {
+    return (
+      <div className="workspace-feed">
+        <div className="workspace-feed-header">
+          <h2 className="workspace-feed-title">Project Feed</h2>
+          <div className="workspace-feed-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={feedView === 'posts'}
+              className={'workspace-feed-tab' + (feedView === 'posts' ? ' is-active' : '')}
+              onClick={() => setFeedView('posts')}
+            >
+              Posts
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={feedView === 'changes'}
+              className={'workspace-feed-tab' + (feedView === 'changes' ? ' is-active' : '')}
+              onClick={() => setFeedView('changes')}
+            >
+              Changes
+            </button>
+          </div>
+        </div>
+
+        {posts.length === 0 ? (
+          <p className="workspace-feed-empty">
+            No saved changes yet. Edit a file and click Save to post an update.
+          </p>
+        ) : feedView === 'posts' ? (
+          <div className="workspace-feed-posts">
+            {posts.map((post) => (
+              <article key={post.id} className="workspace-feed-post">
+                <header className="workspace-feed-post-head">
+                  <span className="workspace-feed-avatar" style={{ background: colorForName(post.user) }}>
+                    {getInitials(post.user)}
+                  </span>
+                  <div className="workspace-feed-post-meta">
+                    <span className="workspace-feed-user">{post.user}</span>
+                    <span className="workspace-feed-post-file">changed {renderFeedFileLink(post)}</span>
+                  </div>
+                </header>
+                <p className="workspace-feed-comment">{post.comment}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <ul className="workspace-feed-changes">
+            {posts.map((post) => (
+              <li key={post.id} className="workspace-feed-change">
+                <span className="workspace-feed-change-file">{renderFeedFileLink(post)}</span>
+                <span className="workspace-feed-change-user">{post.user}</span>
+                <span className="workspace-feed-change-time">{formatFeedTime(post.timestamp)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
   function renderMainScreen() {
     if (!activeProject) {
       return (
@@ -764,20 +973,10 @@ function Workspace() {
       )
     }
 
-    if (!selectedNode) {
-      return (
-        <div className="workspace-empty">
-          <p>Select a file to open it, or create a new one from the ribbon.</p>
-        </div>
-      )
-    }
-
-    if (selectedNode.type === 'folder') {
-      return (
-        <div className="workspace-empty">
-          <p>This is a folder. Select a file inside it, or create a new file here.</p>
-        </div>
-      )
+    // The feed is the landing screen whenever no file is selected, and can
+    // also be toggled open over the current file.
+    if (feedVisible) {
+      return renderFeed()
     }
 
     switch (selectedNode.type) {
@@ -903,11 +1102,17 @@ function Workspace() {
 
   const viewers = activeProject && selectedNode?.type !== 'folder' ? selectedNode?.viewers ?? [] : []
 
-  /* The ribbon is disabled whenever there's no real file to act on,
-    no project, no selection or a folder selected. Otherwise,
-    it reflects the selected file's type. */
-  const ribbonDisabled = !activeProject || !selectedNode || selectedNode.type === 'folder'
-  const effectiveType = !ribbonDisabled && RIBBON_THEMES[selectedNode.type] ? selectedNode.type : 'document'
+  // hasFile: a real file (not a folder) is selected in an active project.
+  // The feed is shown whenever there's no file, or when the user has
+  // toggled it open over the current one.
+  const hasFile = !!activeProject && !!selectedNode && selectedNode.type !== 'folder'
+  const feedVisible = !!activeProject && (!hasFile || feedOpen)
+
+  // The ribbon is grayed out when there's no file to act on, or while the
+  // feed covers the file. It keeps the selected file's theme in the latter
+  // case; with no file it shows the Word (document) ribbon as a placeholder.
+  const ribbonDisabled = !hasFile || feedOpen
+  const effectiveType = hasFile && RIBBON_THEMES[selectedNode.type] ? selectedNode.type : 'document'
   const theme = RIBBON_THEMES[effectiveType]
 
   return (
@@ -957,20 +1162,11 @@ function Workspace() {
 
         <div className="workspace-ribbon-main" style={{ '--ribbon-accent': theme.accent }}>
           {/* Project + file context lives right in the tab strip row now,
-              alongside Home/Insert/Design/etc — it stays enabled even when
+              alongside Home/Insert/Design/etc. it stays enabled even when
               the tabs/groups below are grayed out, since switching projects
               shouldn't require a file to be selected first. */}
           <div className="workspace-ribbon-tabstrip" role="tablist">
             <div className="workspace-ribbon-context">
-              {createProjectSuccess && (
-                <span
-                  className="workspace-ribbon-context-status workspace-ribbon-context-status--success"
-                  role="status"
-                >
-                  ✓ {createProjectSuccess}
-                </span>
-              )}
-
               {loadingProjects ? (
                 <span className="workspace-ribbon-context-status">Loading projects…</span>
               ) : projectError ? (
@@ -994,7 +1190,7 @@ function Workspace() {
                 </select>
               )}
 
-              {activeProject && selectedNode && selectedNode.type !== 'folder' && (
+              {hasFile && (
                 <>
                   <span className="workspace-ribbon-context-sep">/</span>
                   <span className="workspace-ribbon-context-file">{selectedNode.name}</span>
@@ -1021,6 +1217,29 @@ function Workspace() {
                   {tab}
                 </button>
               ))}
+            </div>
+
+            {/* Save + Feed stay enabled regardless of the grayed-out tabs. */}
+            <div className="workspace-ribbon-actions">
+              <button
+                type="button"
+                className="workspace-ribbon-pill workspace-ribbon-pill--primary"
+                onClick={openSaveModal}
+                disabled={!(hasFile && selectedNode.dirty)}
+                title={hasFile && selectedNode.dirty ? 'Save changes with a comment' : 'No unsaved changes'}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className={'workspace-ribbon-pill' + (feedVisible ? ' is-active' : '')}
+                onClick={() => setFeedOpen((open) => !open)}
+                disabled={!hasFile}
+                aria-pressed={feedVisible}
+                title={hasFile ? (feedVisible ? 'Close feed' : 'Open feed') : 'Select a file to close the feed'}
+              >
+                Feed
+              </button>
             </div>
 
             <div className="workspace-ribbon-presence">
@@ -1050,10 +1269,9 @@ function Workspace() {
       </div>
 
       <div className="workspace-body">
-        {/* Floating toggle — anchored to a fixed spot in the top-left
+        {/* Floating toggle anchored to a fixed spot in the top-left
             corner of the body, outside the explorer pane itself, so it
-            never moves: whether the pane is open or fully hidden, the
-            handle to bring it back stays exactly here. */}
+            never moves */}
         <button
           type="button"
           className="workspace-explorer-toggle"
@@ -1088,6 +1306,42 @@ function Workspace() {
 
         <main className="workspace-main">{renderMainScreen()}</main>
       </div>
+
+      {saveModalOpen && selectedNode && (
+        <div className="workspace-modal-overlay" onClick={closeSaveModal}>
+          <div className="workspace-modal" onClick={(e) => e.stopPropagation()}>
+            <h2 className="workspace-modal-title">Save changes</h2>
+            <p className="workspace-modal-subtitle">{selectedNode.name}</p>
+            <form onSubmit={handleSaveChange}>
+              <div className="workspace-modal-field">
+                <label htmlFor="save-comment">Comments (required)</label>
+                <textarea
+                  id="save-comment"
+                  rows={4}
+                  autoFocus
+                  placeholder="Describe what you changed…"
+                  value={saveComment}
+                  onChange={(e) => {
+                    setSaveError('')
+                    setSaveComment(e.target.value)
+                  }}
+                />
+              </div>
+              {saveError && (
+                <p className="workspace-modal-error" role="alert">{saveError}</p>
+              )}
+              <div className="workspace-modal-actions">
+                <button type="button" className="workspace-modal-cancel" onClick={closeSaveModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="workspace-modal-create">
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {newProjectModalOpen && (
         <div className="workspace-modal-overlay" onClick={closeNewProjectModal}>
