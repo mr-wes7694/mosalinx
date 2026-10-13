@@ -5,6 +5,7 @@ const {
     createProject,
     updateProject,
     deleteProject,
+    assignProjectMemberRole,
 } = require('../controllers/projectController');
 
 const { verifyFirebaseToken } = require('../middleware');
@@ -22,5 +23,12 @@ router.patch('/:projectId', verifyFirebaseToken, updateProject);
 
 // Delete a project after authentication and owner verification.
 router.delete('/:projectId', verifyFirebaseToken, deleteProject);
+
+// Update the role of an existing project member.
+router.patch(
+    '/:projectId/members/:userId/role',
+    verifyFirebaseToken,
+    assignProjectMemberRole
+);
 
 module.exports = router;

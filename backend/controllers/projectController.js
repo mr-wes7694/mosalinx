@@ -1,9 +1,13 @@
-const { findUserByFirebaseUid } = require('../models/userModel');
+const {
+    findUserByFirebaseUid,
+    findUserById,
+} = require('../models/userModel');
 const {
     findProjectsByUserId,
     findProjectById,
     findProjectMemberRole,
     updateProjectDetails,
+    updateProjectMemberRole,
     createProjectWithOwner,
     deleteProjectWithOwner,
 } = require('../models/projectModel');
@@ -250,6 +254,135 @@ const updateProject = async (req, res) => {
     }
 };
 
+// Update the role of an existing project member. Only project owners may manage member roles.
+const assignProjectMemberRole = async (req, res) => {
+    try {
+        const firebaseUid = req.user?.uid;
+
+        if (!firebaseUid) {
+            return res.status(401).json({
+                message: 'Authentication required.',
+            });
+        }
+
+        const rawProjectId = req.params.projectId;
+        const rawUserId = req.params.userId;
+
+        // Require positive, safe integer IDs.
+        if (
+            typeof rawProjectId !== 'string' ||
+            !/^[1-9]\d*$/.test(rawProjectId) ||
+            !Number.isSafeInteger(Number(rawProjectId)) ||
+            typeof rawUserId !== 'string' ||
+            !/^[1-9]\d*$/.test(rawUserId) ||
+            !Number.isSafeInteger(Number(rawUserId))
+        ) {
+            return res.status(400).json({
+                message: 'Valid project and target user IDs are required.',
+            });
+        }
+
+        const projectId = Number(rawProjectId);
+        const targetUserId = Number(rawUserId);
+        const { role } = req.body || {};
+
+        // Accept only the roles currently supported by Mosalinx.
+        const supportedRoles = ['owner', 'collaborator'];
+
+        if (
+            typeof role !== 'string' ||
+            !supportedRoles.includes(role)
+        ) {
+            return res.status(400).json({
+                message: 'Role must be owner or collaborator.',
+            });
+        }
+
+        const requester = await findUserByFirebaseUid(firebaseUid);
+
+        if (!requester) {
+            return res.status(404).json({
+                message: 'Mosalinx user not found.',
+            });
+        }
+
+        const project = await findProjectById(projectId);
+
+        if (!project) {
+            return res.status(404).json({
+                message: 'Project not found.',
+            });
+        }
+
+        // Only an existing project owner may change member roles.
+        const requesterRole = await findProjectMemberRole(
+            projectId,
+            requester.user_id
+        );
+
+        if (requesterRole !== 'owner') {
+            return res.status(403).json({
+                message: 'Only project owners can manage member roles.',
+            });
+        }
+
+        const targetUser = await findUserById(targetUserId);
+
+        if (!targetUser) {
+            return res.status(404).json({
+                message: 'Target user not found.',
+            });
+        }
+
+        const targetRole = await findProjectMemberRole(
+            projectId,
+            targetUserId
+        );
+
+        if (!targetRole) {
+            return res.status(404).json({
+                message: 'Target user is not a member of this project.',
+            });
+        }
+
+        // Prevent the requester from demoting their own owner role.
+        if (
+            requester.user_id === targetUserId &&
+            role !== 'owner'
+        ) {
+            return res.status(400).json({
+                message: 'You cannot change your own owner role.',
+            });
+        }
+
+        const updatedRole = await updateProjectMemberRole(
+            projectId,
+            targetUserId,
+            role
+        );
+
+        if (!updatedRole) {
+            return res.status(404).json({
+                message: 'Project membership not found.',
+            });
+        }
+
+        return res.status(200).json({
+            message: 'Project member role updated successfully.',
+            project_id: projectId,
+            user_id: targetUserId,
+            role: updatedRole,
+        });
+    } catch (error) {
+        console.error('Failed to assign project member role:', error);
+
+        return res.status(500).json({
+            message: 'Failed to update project member role.',
+        });
+    }
+};
+
+
 // Delete a project after verifying the authenticated user is its owner.
 const deleteProject = async (req, res) => {
     try {
@@ -335,4 +468,5 @@ module.exports = {
     createProject,
     updateProject,
     deleteProject,
+    assignProjectMemberRole,
 };
