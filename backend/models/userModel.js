@@ -1,5 +1,15 @@
 const pool = require('../config/database');
 
+// Find an existing Mosalinx user by database ID.
+const findUserById = async (userId) => {
+    const [rows] = await pool.query(
+        'SELECT user_id FROM users WHERE user_id = ? LIMIT 1',
+        [userId]
+    );
+
+    return rows[0] || null;
+};
+
 // Find an existing Mosalinx user by email address.
 const findUserByEmail = async (email) => {
     const [rows] = await pool.query(
@@ -82,6 +92,7 @@ const createUser = async (firebaseUid, displayName, email) => {
 };
 
 module.exports = {
+    findUserById,
     findUserByEmail,
     findUserByFirebaseUid,
     updateUserProfileByFirebaseUid,
