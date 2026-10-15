@@ -1,4 +1,6 @@
-const PROFILE_URL = 'http://localhost:3000/api/users/profile'
+import { API_BASE_URL } from '../config/api'
+
+const PROFILE_URL = `${API_BASE_URL}/api/users/profile`
 
 // Retrieve the persisted profile for the authenticated Firebase user.
 export async function getUserProfile(user) {

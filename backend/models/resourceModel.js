@@ -44,6 +44,16 @@ const updateResourceStoragePath = async (resourceId, storagePath) => {
     await pool.query(sql, [storagePath, resourceId]);
 };
 
+// Update only the organizational category of an existing resource.
+const updateResourceCategory = async (resourceId, category) => {
+    const sql =
+        'UPDATE resources SET category = ? WHERE resource_id = ?';
+
+    const [result] = await pool.query(sql, [category, resourceId]);
+
+    return result.affectedRows > 0;
+};
+
 // Delete a resource record if the file upload fails.
 const deleteResourceById = async (resourceId) => {
     const sql = 'DELETE FROM resources WHERE resource_id = ?';
@@ -89,7 +99,7 @@ const searchResourcesByProject = async (projectId, searchTerm) => {
         'resource_type, file_size, category, storage_path, uploaded_at, updated_at ' +
         'FROM resources ' +
         'WHERE project_id = ? ' +
-        'AND (resource_name LIKE ? OR resource_type LIKE ? OR category LIKE ?) ' +
+        'AND (resource_name LIKE ? OR resource_type LIKE ? OR COALESCE(category, \'Uncategorized\') LIKE ?) ' +
         'ORDER BY uploaded_at DESC';
 
     const searchPattern = `%${searchTerm}%`;
@@ -121,6 +131,7 @@ const isProjectMember = async (projectId, userId) => {
 module.exports = {
     createResource,
     updateResourceStoragePath,
+    updateResourceCategory,
     deleteResourceById,
     deleteResourceRecord,
     findResourceById,

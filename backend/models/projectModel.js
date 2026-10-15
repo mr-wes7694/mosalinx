@@ -10,7 +10,7 @@ const SUPPORTED_PROJECT_ROLES = [
 // Find projects that the user belongs to.
 const findProjectsByUserId = async (userId) => {
     const sql =
-        'SELECT p.project_id, p.project_name, p.description ' +
+        'SELECT p.project_id, p.project_name, p.description, pm.role ' +
         'FROM projects p ' +
         'INNER JOIN project_members pm ON p.project_id = pm.project_id ' +
         'WHERE pm.user_id = ? ' +
@@ -140,6 +140,160 @@ const createProjectWithOwner = async (
     }
 };
 
+// Delete a project and its related database records in one transaction.
+const deleteProjectWithOwner = async (projectId, userId) => {
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        // Lock the project while checking permission and deleting records.
+        const [projectRows] = await connection.query(
+            'SELECT project_id FROM projects ' +
+            'WHERE project_id = ? FOR UPDATE',
+            [projectId]
+        );
+
+        if (projectRows.length === 0) {
+            await connection.rollback();
+
+            return {
+                success: false,
+                reason: 'not_found',
+            };
+        }
+
+        // Check the requester's role inside the transaction.
+        const [memberRows] = await connection.query(
+            'SELECT role FROM project_members ' +
+            'WHERE project_id = ? AND user_id = ? ' +
+            'LIMIT 1 FOR UPDATE',
+            [projectId, userId]
+        );
+
+        if (
+            memberRows.length === 0 ||
+            String(memberRows[0].role).toLowerCase() !== 'owner'
+        ) {
+            await connection.rollback();
+
+            return {
+                success: false,
+                reason: 'forbidden',
+            };
+        }
+
+        // Save file paths so Firebase files can be cleaned up after commit.
+        const [resourceRows] = await connection.query(
+            'SELECT storage_path FROM resources WHERE project_id = ?',
+            [projectId]
+        );
+
+        const storagePaths = resourceRows
+            .map((resource) => resource.storage_path)
+            .filter(Boolean);
+
+        // Delete dependent records before their parent records.
+        await connection.query(
+            'DELETE FROM messages WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM comments WHERE post_id IN ' +
+            '(SELECT post_id FROM workspace_posts WHERE project_id = ?)',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM workspace_posts WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM tasks WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM ai_ideas WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM notifications WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM project_milestones WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM calendar_events WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM invitations WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM activity_logs WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM resources WHERE project_id = ?',
+            [projectId]
+        );
+
+        // Messages have been removed, so their channels can be deleted.
+        await connection.query(
+            'DELETE FROM channels WHERE project_id = ?',
+            [projectId]
+        );
+
+        await connection.query(
+            'DELETE FROM project_members WHERE project_id = ?',
+            [projectId]
+        );
+
+        // Remove the project after its dependent records are gone.
+        const [deleteResult] = await connection.query(
+            'DELETE FROM projects WHERE project_id = ?',
+            [projectId]
+        );
+
+        if (deleteResult.affectedRows !== 1) {
+            throw new Error('Project could not be deleted.');
+        }
+
+        await connection.commit();
+
+        return {
+            success: true,
+            storagePaths,
+        };
+    }  catch (error) {
+        // Try to undo database changes without hiding the original error.
+        try {
+            await connection.rollback();
+        } catch (rollbackError) {
+            console.error(
+                'Failed to roll back project deletion:',
+                rollbackError
+            );
+        }
+
+        throw error;
+    } finally {
+        connection.release();
+    }
+};
+
 module.exports = {
     findProjectsByUserId,
     findProjectById,
@@ -147,4 +301,5 @@ module.exports = {
     updateProjectDetails,
     updateProjectMemberRole,
     createProjectWithOwner,
+    deleteProjectWithOwner,
 };

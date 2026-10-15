@@ -128,3 +128,73 @@
         gap: 8px;
     }
 }
+
+
+/* Keep Download and resource editing actions grouped together. */
+.resource-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Give inline category editing enough room without disrupting
+   the existing resource metadata layout. */
+.resource-card-editor {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.resource-card-editor label {
+    color: #26383a;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.resource-card-editor select {
+    width: 100%;
+    max-width: 260px;
+    padding: 9px 12px;
+    border: 1px solid #a2a6ab;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #222222;
+    font: inherit;
+}
+
+.resource-card-editor select:focus-visible {
+    outline: 2px solid #14bbc4;
+    outline-offset: 2px;
+}
+
+.resource-card-editor select:disabled {
+    background: #f1f1f1;
+    cursor: not-allowed;
+}
+
+/* Display save errors beside the editor that caused them. */
+.resource-card-edit-error {
+    margin: 0;
+    color: #b42318;
+    font-size: 0.85rem;
+}
+
+/* Keep action buttons usable on narrow screens. */
+@media (max-width: 700px) {
+    .resource-card-actions {
+        justify-content: stretch;
+    }
+
+    .resource-card-actions button {
+        flex: 1 1 110px;
+    }
+
+    .resource-card-editor select {
+        max-width: none;
+    }
+}

@@ -4,30 +4,31 @@ const {
     getUserProjects,
     createProject,
     updateProject,
+    deleteProject,
+    assignProjectMemberRole,
 } = require('../controllers/projectController');
+
 const { verifyFirebaseToken } = require('../middleware');
 
 const router = express.Router();
 
-// Get projects that belong to the authenticated user.
-router.get(
-    '/',
-    verifyFirebaseToken,
-    getUserProjects
-);
+// Get projects for the authenticated user.
+router.get('/', verifyFirebaseToken, getUserProjects);
 
 // Create a project for the authenticated user.
-router.post(
-    '/',
-    verifyFirebaseToken,
-    createProject
-);
+router.post('/', verifyFirebaseToken, createProject);
 
-// Update an existing project.
+// Update project details.
+router.patch('/:projectId', verifyFirebaseToken, updateProject);
+
+// Delete a project after authentication and owner verification.
+router.delete('/:projectId', verifyFirebaseToken, deleteProject);
+
+// Update the role of an existing project member.
 router.patch(
-    '/:projectId',
+    '/:projectId/members/:userId/role',
     verifyFirebaseToken,
-    updateProject
+    assignProjectMemberRole
 );
 
 module.exports = router;

@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { auth } from "../firebase";
+import { API_BASE_URL } from "../config/api";
 import { useProject } from "../context/useProject";
+import { AuthContext } from "../context/AuthContext.js";
 import ResourceUpload from "../components/ResourceUpload";
 import ResourceSearch from "../components/ResourceSearch";
 import ResourceCard from "../components/ResourceCard";
 import "./Resources.css";
 
-const API_URL = "http://localhost:3000/api/resources";
+const API_URL = `${API_BASE_URL}/api/resources`;
 
 function Resources() {
+    // Access the authenticated user's persisted database identity.
+    const { userProfile } = useContext(AuthContext);
     const {
         activeProject,
         loadingProjects,
@@ -19,6 +23,29 @@ function Resources() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [downloadingId, setDownloadingId] = useState(null);
+
+    // Allow project owners and original uploaders to edit resources
+    // only when those resources belong to the active project.
+    const canEditResource = (resource) => {
+        if (!userProfile?.userId || !activeProject?.role) {
+            return false;
+        }
+
+        const belongsToActiveProject =
+            Number(resource.project_id) === Number(activeProject.project_id);
+
+        if (!belongsToActiveProject) {
+            return false;
+        }
+
+        const isProjectOwner =
+            activeProject.role.toLowerCase() === "owner";
+
+        const isOriginalUploader =
+            Number(resource.uploaded_by) === Number(userProfile.userId);
+
+        return isProjectOwner || isOriginalUploader;
+    };
 
     // Track backend Resource Search results and request state separately
     // from the complete project repository.
@@ -229,6 +256,56 @@ function Resources() {
         }
     };
 
+    // Save category changes through the authenticated Resource API and
+    // synchronize repository and search results without reloading.
+    const handleSaveCategory = async (resource, category) => {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            throw new Error("You must be signed in to edit a resource.");
+        }
+
+        const token = await currentUser.getIdToken();
+
+        const response = await fetch(
+            `${API_URL}/${resource.resource_id}`,
+            {
+                method: "PATCH",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ category }),
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.message || "Failed to update resource category."
+            );
+        }
+
+        if (!data.resource) {
+            throw new Error("The server did not return the updated resource.");
+        }
+
+        // Update both views so the new category remains consistent
+        // whether the user is browsing or searching resources.
+        const applyUpdatedResource = (previousResources) =>
+            previousResources.map((existingResource) =>
+                existingResource.resource_id === data.resource.resource_id
+                    ? data.resource
+                    : existingResource
+            );
+
+        setResources(applyUpdatedResource);
+        setSearchResults(applyUpdatedResource);
+
+        return data.resource;
+    };
+
     // Toggle the Resource Upload form without changing its existing
     // upload behavior or backend integration.
     const handleUploadToggle = () => {
@@ -304,6 +381,8 @@ function Resources() {
                     onSearch={handleSearch}
                     onSearchClear={handleSearchClear}
                     onDownload={handleDownload}
+                    canEditResource={canEditResource}
+                    onSaveCategory={handleSaveCategory}
                     onSearchStateChange={setSearchActive}
                     downloadingId={downloadingId}
                     loading={searchLoading}
@@ -361,6 +440,8 @@ function Resources() {
                                         downloading={
                                             downloadingId === resource.resource_id
                                         }
+                                        canEdit={canEditResource(resource)}
+                                        onSaveCategory={handleSaveCategory}
                                     />
                                 ))}
                             </div>

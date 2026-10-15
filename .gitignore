@@ -60,3 +60,6 @@ Thumbs.db
 Desktop.ini
 # Local uploaded resource files
 Backend/uploads/
+
+# Local database TLS certificates
+backend/certs/
