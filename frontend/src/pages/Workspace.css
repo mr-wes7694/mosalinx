@@ -1106,15 +1106,6 @@
   color: #1a1b1e;
 }
 
-.workspace-feed-post-file {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: #8a8d93;
-}
-
 .workspace-feed-file {
   display: inline-flex;
   align-items: center;
@@ -1142,15 +1133,6 @@ button.workspace-feed-file:hover {
 .workspace-feed-file-icon {
   display: inline-flex;
   color: #6b6e73;
-}
-
-.workspace-feed-comment {
-  margin: 0;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  color: #2a2c30;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .workspace-feed-changes {
@@ -1194,4 +1176,355 @@ button.workspace-feed-file:hover {
 .workspace-feed-change-time {
   color: #8a8d93;
   white-space: nowrap;
+}
+
+/* ---------- Feed: header actions, social-style posts ---------- */
+
+.workspace-feed-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workspace-feed-new-post {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 7px;
+  background: #14bbc4;
+  color: #00282a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.workspace-feed-new-post:hover {
+  opacity: 0.85;
+}
+
+.workspace-feed-avatar--img {
+  object-fit: cover;
+  background: #e8e9ec;
+}
+
+.workspace-feed-post-time {
+  font-size: 0.76rem;
+  color: #8a8d93;
+}
+
+.workspace-post-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-post-line {
+  margin: 0;
+  min-height: 1.55em;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: #2a2c30;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-post-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.workspace-post-images.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace-post-image {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #f0f0f2;
+}
+
+.workspace-post-files {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.workspace-post-files-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a8d93;
+}
+
+.workspace-post-files-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ---------- Post composer ---------- */
+
+.workspace-modal--wide {
+  max-width: 560px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.workspace-composer-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.workspace-composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.workspace-composer-toolbar-gap {
+  flex: 1;
+}
+
+.workspace-composer-tool {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #2a2c30;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.workspace-composer-tool--text {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.workspace-composer-tool:hover {
+  background: #f2f2f2;
+}
+
+.workspace-composer-tool.is-active {
+  background: #eef7f8;
+  border-color: #14bbc4;
+  color: #0f8f96;
+}
+
+.workspace-composer-tool:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.workspace-composer-editor-wrap {
+  position: relative;
+}
+
+.workspace-composer-placeholder {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  color: #a0a3a8;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.workspace-composer-editor {
+  min-height: 130px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1a1b1e;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-composer-editor:focus {
+  outline: 2px solid #14bbc4;
+  outline-offset: 1px;
+}
+
+.workspace-composer-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.workspace-composer-image {
+  position: relative;
+  width: 84px;
+  height: 84px;
+}
+
+.workspace-composer-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.workspace-composer-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #1a1b1e;
+  color: #ffffff;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workspace-composer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.workspace-composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 4px 3px 8px;
+  border-radius: 999px;
+  background: #eef7f8;
+  border: 1px solid rgba(20, 187, 196, 0.35);
+  color: #0f8f96;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.workspace-composer-chip-remove {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workspace-composer-chip-remove:hover {
+  background: rgba(15, 143, 150, 0.15);
+}
+
+.workspace-composer-picker {
+  margin-top: 10px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fafafb;
+}
+
+.workspace-composer-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  color: #2a2c30;
+  cursor: pointer;
+}
+
+.workspace-composer-picker-row:hover {
+  background: #eef7f8;
+}
+
+.workspace-composer-picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-composer-picker-folder {
+  color: #8a8d93;
+  font-size: 0.72rem;
+}
+
+.workspace-composer-picker-empty {
+  margin: 0;
+  padding: 12px;
+  color: #999;
+  font-size: 0.82rem;
+  font-style: italic;
+  text-align: center;
+}
+
+.workspace-modal--wide .workspace-modal-error {
+  margin-top: 10px;
+}
+
+/* Post composer: keep Cancel/Post below the editor, never on top of it. */
+.workspace-modal--wide form {
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-modal--wide .workspace-composer-editor-wrap {
+  flex: 0 0 auto;
+}
+
+.workspace-modal--wide .workspace-modal-actions {
+  position: static;
+  flex: 0 0 auto;
+  margin-top: 16px;
+  clear: both;
+}
+
+/* Save prompt: "don't ask again" checkbox above the buttons. */
+.workspace-save-prompt-skip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  color: #4a4d52;
+  cursor: pointer;
+}
+
+.workspace-save-prompt-text {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #4a4d52;
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
 import './Workspace.css'
@@ -198,41 +198,156 @@ const INITIAL_TREE = [
   },
 ]
 
-// ---------- Feed (saved-change posts) ----------
-// Saving a change requires a comment, and each save becomes a post:
-// { id, user, fileId, fileName, comment, timestamp }. Like the file tree,
-// posts are local state seeded with samples until a backend exists
+// ---------- Feed (posts + saved changes) ----------
+// The feed has two separate streams, both local state seeded with samples
+// until a backend exists:
+//
+// - posts: written in the post composer (rich text, images, linked files).
+//   { id, user, avatarUrl, lines, images: [{ id, name, url }],
+//     files: [{ id, name }], timestamp }
+//   `lines` is the formatted body as plain data (see serializeEditor), so it
+//   renders as React elements and never needs innerHTML.
+//   Backend dev: images need uploading to storage (the url here is a
+//   temporary in-browser object URL), and avatarUrl should come from the
+//   user's profile_image_url.
+//
+// - changes: one entry per Save click — { id, user, fileId, fileName,
+//   timestamp }. Saving no longer asks for a comment or creates a post.
 
 const NOW = Date.now()
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 
+const MAX_POST_IMAGES = 4
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+function plainLines(text) {
+  return text.split('\n').map((line) => [{ text: line }])
+}
+
 const INITIAL_POSTS = [
   {
     id: 'post-1',
     user: 'Veronica Johnson',
-    fileId: 'file-budget',
-    fileName: 'Budget.mosheet',
-    comment: 'Updated hosting and licensing costs to match the latest vendor quotes.',
+    avatarUrl: null,
+    lines: [
+      [
+        { text: 'Budget update: ', bold: true },
+        { text: 'refreshed hosting and licensing costs to match the latest vendor quotes.' },
+      ],
+      [{ text: 'Let me know if anything looks off before the client review.', italic: true }],
+    ],
+    images: [],
+    files: [{ id: 'file-budget', name: 'Budget.mosheet' }],
     timestamp: NOW - 45 * MINUTE,
   },
   {
     id: 'post-2',
     user: 'Lesly Martinez',
-    fileId: 'file-query',
-    fileName: 'active_users.sql',
-    comment: 'Filtered to active accounts only and sorted by most recent login.',
+    avatarUrl: null,
+    lines: plainLines('Filtered the user report to active accounts only and sorted by most recent login.'),
+    images: [],
+    files: [{ id: 'file-query', name: 'active_users.sql' }],
     timestamp: NOW - 5 * HOUR,
   },
   {
     id: 'post-3',
     user: 'Veronica Johnson',
-    fileId: 'file-proposal',
-    fileName: 'Client Proposal.modoc',
-    comment: 'Added the overview section and next steps for stakeholder review.',
+    avatarUrl: null,
+    lines: plainLines(
+      'Added the overview section and next steps to the proposal.\nThe pitch deck still needs the problem slide tightened up.'
+    ),
+    images: [],
+    files: [
+      { id: 'file-proposal', name: 'Client Proposal.modoc' },
+      { id: 'file-pitch', name: 'Pitch Deck.moslide' },
+    ],
     timestamp: NOW - 26 * HOUR,
   },
 ]
+
+const INITIAL_CHANGES = [
+  { id: 'change-1', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
+  { id: 'change-2', user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
+  { id: 'change-3', user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
+]
+
+// Turns the composer's contentEditable DOM into plain data: an array of
+// lines, each an array of { text, bold, italic, underline } runs. Anything
+// that isn't text/bold/italic/underline/line breaks is dropped, so pasted or
+// injected markup can't survive into a post.
+function serializeEditor(root) {
+  const lines = [[]]
+  const currentLine = () => lines[lines.length - 1]
+  const startNewLine = () => lines.push([])
+
+  function walk(node, style) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.replace(/ /g, ' ')
+      if (text) currentLine().push({ text, ...style })
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const tag = node.tagName
+    if (tag === 'BR') {
+      startNewLine()
+      return
+    }
+
+    const next = { ...style }
+    if (tag === 'B' || tag === 'STRONG') next.bold = true
+    if (tag === 'I' || tag === 'EM') next.italic = true
+    if (tag === 'U') next.underline = true
+    // Some browsers express formatting as inline CSS instead of tags.
+    const weight = node.style?.fontWeight
+    if (weight === 'bold' || Number(weight) >= 600) next.bold = true
+    if (node.style?.fontStyle === 'italic') next.italic = true
+    if ((node.style?.textDecorationLine || node.style?.textDecoration || '').includes('underline')) {
+      next.underline = true
+    }
+
+    const isBlock = tag === 'DIV' || tag === 'P'
+    if (isBlock && currentLine().length > 0) startNewLine()
+    node.childNodes.forEach((child) => walk(child, next))
+    if (isBlock && currentLine().length > 0) startNewLine()
+  }
+
+  root.childNodes.forEach((child) => walk(child, {}))
+
+  while (lines.length > 0 && currentLine().every((run) => !run.text.trim())) {
+    if (lines.length === 1) break
+    lines.pop()
+  }
+  return lines
+}
+
+function linesHaveText(lines) {
+  return lines.some((runs) => runs.some((run) => run.text.trim()))
+}
+
+function renderRichLines(lines) {
+  return lines.map((runs, lineIndex) => (
+    <p key={lineIndex} className="workspace-post-line">
+      {runs.length === 0 ? (
+        <br />
+      ) : (
+        runs.map((run, runIndex) => (
+          <span
+            key={runIndex}
+            style={{
+              fontWeight: run.bold ? 700 : undefined,
+              fontStyle: run.italic ? 'italic' : undefined,
+              textDecoration: run.underline ? 'underline' : undefined,
+            }}
+          >
+            {run.text}
+          </span>
+        ))
+      )}
+    </p>
+  ))
+}
 
 const AVATAR_COLORS = ['#4a8f5c', '#1b3a5c', '#c0392b', '#d9822b', '#5c2d91', '#007acc']
 
@@ -250,6 +365,19 @@ function getInitials(name) {
     .join('')
     .slice(0, 2)
     .toUpperCase()
+}
+
+// Profile picture if the user has one, otherwise a colored initials circle.
+function renderAvatar(name, avatarUrl, extraClass = '') {
+  const className = 'workspace-feed-avatar' + (extraClass ? ` ${extraClass}` : '')
+  if (avatarUrl) {
+    return <img className={className + ' workspace-feed-avatar--img'} src={avatarUrl} alt="" />
+  }
+  return (
+    <span className={className} style={{ background: colorForName(name) }} aria-hidden="true">
+      {getInitials(name)}
+    </span>
+  )
 }
 
 function formatFeedTime(timestamp) {
@@ -307,6 +435,20 @@ function insertNode(nodes, folderId, newNode) {
     }
     return node
   })
+}
+
+// Every file in the tree (folders excluded), each with the name of the
+// folder it lives in — used by the composer's "link files" picker.
+function flattenFiles(nodes, folderName = '') {
+  const files = []
+  for (const node of nodes) {
+    if (node.type === 'folder') {
+      files.push(...flattenFiles(node.children ?? [], node.name))
+    } else {
+      files.push({ id: node.id, name: node.name, type: node.type, folder: folderName })
+    }
+  }
+  return files
 }
 
 function countFilesOfType(nodes, type) {
@@ -374,9 +516,33 @@ function Workspace() {
   const [feedOpen, setFeedOpen] = useState(false)
   const [feedView, setFeedView] = useState('posts')
   const [posts, setPosts] = useState(INITIAL_POSTS)
-  const [saveModalOpen, setSaveModalOpen] = useState(false)
-  const [saveComment, setSaveComment] = useState('')
-  const [saveError, setSaveError] = useState('')
+  const [changes, setChanges] = useState(INITIAL_CHANGES)
+  const [composerOpen, setComposerOpen] = useState(false)
+  // Save prompt: asks whether a save should also become a post. "Don't ask
+  // again" is remembered in this browser only.
+  const [savePromptOpen, setSavePromptOpen] = useState(false)
+  const [savePromptSkip, setSavePromptSkip] = useState(false)
+  const [savedFileId, setSavedFileId] = useState(null)
+  const [skipSavePrompt, setSkipSavePrompt] = useState(() => {
+    try {
+      return localStorage.getItem('mosalinx.skipSavePrompt') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [composerEmpty, setComposerEmpty] = useState(true)
+  const [composerFormats, setComposerFormats] = useState({ bold: false, italic: false, underline: false })
+  const [composerImages, setComposerImages] = useState([])
+  const [composerFileIds, setComposerFileIds] = useState([])
+  const [composerPickerOpen, setComposerPickerOpen] = useState(false)
+  const [composerError, setComposerError] = useState('')
+  const composerEditorRef = useRef(null)
+  const composerImageInputRef = useRef(null)
+
+  // Put the cursor in the editor as soon as the composer opens.
+  useEffect(() => {
+    if (composerOpen) composerEditorRef.current?.focus()
+  }, [composerOpen])
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
@@ -473,42 +639,176 @@ function Workspace() {
     )
   }
 
-  function openSaveModal() {
+  // Clicking Save saves right away, then asks whether to make a post about it
+  // (unless the user chose "don't ask again").
+  function handleSave() {
     if (!selectedNode?.dirty) return
-    setSaveComment('')
-    setSaveError('')
-    setSaveModalOpen(true)
+    const fileId = selectedNode.id
+    commitSave()
+    if (skipSavePrompt) return
+    setSavedFileId(fileId)
+    setSavePromptSkip(false)
+    setSavePromptOpen(true)
   }
 
-  function closeSaveModal() {
-    setSaveModalOpen(false)
+  function closeSavePrompt() {
+    setSavePromptOpen(false)
   }
 
-  // Saving requires a comment; the save is recorded as a feed post and the
-  // file's unsaved flag is cleared.
-  function handleSaveChange(event) {
-    event.preventDefault()
-    const comment = saveComment.trim()
-    if (!comment) {
-      setSaveError('Please add a comment describing your change.')
-      return
+  // Return to File: just closes the prompt (the save already happened).
+  function handleReturnToFile() {
+    if (savePromptSkip) {
+      setSkipSavePrompt(true)
+      try {
+        localStorage.setItem('mosalinx.skipSavePrompt', '1')
+      } catch {
+        // storage unavailable: the choice just lasts until reload
+      }
     }
-    if (!selectedNode) return
+    setSavePromptOpen(false)
+  }
+
+  // Opens the composer with the saved file already linked.
+  function handleMakePost() {
+    setSavePromptOpen(false)
+    openComposer()
+    if (savedFileId) setComposerFileIds([savedFileId])
+  }
+
+  // The save itself: the file's unsaved flag is cleared and an entry
+  // (file, user, time) goes into the Changes view.
+  function commitSave() {
+    if (!selectedNode?.dirty) return
 
     const user = auth.currentUser?.displayName || auth.currentUser?.email || 'You'
+    setChanges((prev) => [
+      { id: nextId(), user, fileId: selectedNode.id, fileName: selectedNode.name, timestamp: Date.now() },
+      ...prev,
+    ])
+    setTree((prev) => updateNode(prev, selectedNode.id, (node) => ({ ...node, dirty: false })))
+  }
+
+  // ---------- Post composer ----------
+
+  function openComposer() {
+    setComposerEmpty(true)
+    setComposerFormats({ bold: false, italic: false, underline: false })
+    setComposerImages([])
+    setComposerFileIds([])
+    setComposerPickerOpen(false)
+    setComposerError('')
+    setComposerOpen(true)
+  }
+
+  function closeComposer() {
+    // Images that never made it into a post don't need to stay in memory.
+    composerImages.forEach((image) => URL.revokeObjectURL(image.url))
+    setComposerImages([])
+    setComposerOpen(false)
+  }
+
+  function refreshComposerFormats() {
+    setComposerFormats({
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+    })
+  }
+
+  // Toolbar buttons use onMouseDown + preventDefault so clicking them
+  // doesn't steal focus or collapse the text selection first.
+  function applyComposerFormat(event, command) {
+    event.preventDefault()
+    composerEditorRef.current?.focus()
+    document.execCommand(command)
+    refreshComposerFormats()
+  }
+
+  function handleComposerInput() {
+    const editor = composerEditorRef.current
+    setComposerEmpty(!editor || editor.innerText.trim() === '')
+    setComposerError('')
+  }
+
+  // Paste as plain text so outside formatting can't sneak into the post.
+  function handleComposerPaste(event) {
+    event.preventDefault()
+    const text = event.clipboardData.getData('text/plain')
+    document.execCommand('insertText', false, text)
+  }
+
+  function handleComposerImages(event) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (files.length === 0) return
+
+    const accepted = []
+    let problem = ''
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        problem = `${file.name} isn’t an image.`
+      } else if (file.size > MAX_IMAGE_BYTES) {
+        problem = `${file.name} is larger than 5 MB.`
+      } else if (composerImages.length + accepted.length >= MAX_POST_IMAGES) {
+        problem = `You can attach up to ${MAX_POST_IMAGES} images.`
+      } else {
+        accepted.push({ id: nextId(), name: file.name, url: URL.createObjectURL(file) })
+      }
+    }
+
+    if (accepted.length > 0) setComposerImages((prev) => [...prev, ...accepted])
+    setComposerError(problem)
+  }
+
+  function removeComposerImage(id) {
+    setComposerImages((prev) => {
+      const removed = prev.find((image) => image.id === id)
+      if (removed) URL.revokeObjectURL(removed.url)
+      return prev.filter((image) => image.id !== id)
+    })
+  }
+
+  function toggleComposerFile(id) {
+    setComposerFileIds((prev) => (prev.includes(id) ? prev.filter((fileId) => fileId !== id) : [...prev, id]))
+  }
+
+  function handlePublishPost(event) {
+    event.preventDefault()
+    const editor = composerEditorRef.current
+    if (!editor) return
+
+    const lines = serializeEditor(editor)
+    const hasText = linesHaveText(lines)
+    if (!hasText && composerImages.length === 0 && composerFileIds.length === 0) {
+      setComposerError('Write something, or attach an image or a file, before posting.')
+      return
+    }
+
+    const currentUser = auth.currentUser
+    const allFiles = flattenFiles(tree)
+    const linkedFiles = composerFileIds
+      .map((id) => allFiles.find((file) => file.id === id))
+      .filter(Boolean)
+      .map((file) => ({ id: file.id, name: file.name }))
+
     setPosts((prev) => [
       {
         id: nextId(),
-        user,
-        fileId: selectedNode.id,
-        fileName: selectedNode.name,
-        comment,
+        user: currentUser?.displayName || currentUser?.email || 'You',
+        avatarUrl: currentUser?.photoURL || null,
+        lines: hasText ? lines : [],
+        images: composerImages,
+        files: linkedFiles,
         timestamp: Date.now(),
       },
       ...prev,
     ])
-    setTree((prev) => updateNode(prev, selectedNode.id, (node) => ({ ...node, dirty: false })))
-    setSaveModalOpen(false)
+
+    // The images now belong to the post, so don't revoke them here.
+    setComposerImages([])
+    setComposerOpen(false)
+    setFeedView('posts')
+    setFeedOpen(true)
   }
 
   function createNewFile(type) {
@@ -888,15 +1188,15 @@ function Workspace() {
   }
 
   // A file name in the feed opens that file (if it still exists in the tree).
-  function renderFeedFileLink(post) {
-    const node = findNode(tree, post.fileId)
+  function renderFeedFileLink(fileId, fileName) {
+    const node = findNode(tree, fileId)
     if (!node) {
-      return <span className="workspace-feed-file workspace-feed-file--gone">{post.fileName}</span>
+      return <span className="workspace-feed-file workspace-feed-file--gone">{fileName}</span>
     }
     return (
       <button type="button" className="workspace-feed-file" onClick={() => selectNode(node.id)}>
         <span className="workspace-feed-file-icon">{FILE_TYPES[node.type]?.icon ?? ICONS.document}</span>
-        {post.fileName}
+        {fileName}
       </button>
     )
   }
@@ -906,56 +1206,89 @@ function Workspace() {
       <div className="workspace-feed">
         <div className="workspace-feed-header">
           <h2 className="workspace-feed-title">Project Feed</h2>
-          <div className="workspace-feed-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={feedView === 'posts'}
-              className={'workspace-feed-tab' + (feedView === 'posts' ? ' is-active' : '')}
-              onClick={() => setFeedView('posts')}
-            >
-              Posts
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={feedView === 'changes'}
-              className={'workspace-feed-tab' + (feedView === 'changes' ? ' is-active' : '')}
-              onClick={() => setFeedView('changes')}
-            >
-              Changes
+          <div className="workspace-feed-header-actions">
+            <div className="workspace-feed-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedView === 'posts'}
+                className={'workspace-feed-tab' + (feedView === 'posts' ? ' is-active' : '')}
+                onClick={() => setFeedView('posts')}
+              >
+                Posts
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedView === 'changes'}
+                className={'workspace-feed-tab' + (feedView === 'changes' ? ' is-active' : '')}
+                onClick={() => setFeedView('changes')}
+              >
+                Changes
+              </button>
+            </div>
+            <button type="button" className="workspace-feed-new-post" onClick={openComposer}>
+              {ICONS.plus} New Post
             </button>
           </div>
         </div>
 
-        {posts.length === 0 ? (
-          <p className="workspace-feed-empty">
-            No saved changes yet. Edit a file and click Save to post an update.
-          </p>
-        ) : feedView === 'posts' ? (
-          <div className="workspace-feed-posts">
-            {posts.map((post) => (
-              <article key={post.id} className="workspace-feed-post">
-                <header className="workspace-feed-post-head">
-                  <span className="workspace-feed-avatar" style={{ background: colorForName(post.user) }}>
-                    {getInitials(post.user)}
-                  </span>
-                  <div className="workspace-feed-post-meta">
-                    <span className="workspace-feed-user">{post.user}</span>
-                    <span className="workspace-feed-post-file">changed {renderFeedFileLink(post)}</span>
-                  </div>
-                </header>
-                <p className="workspace-feed-comment">{post.comment}</p>
-              </article>
-            ))}
-          </div>
+        {feedView === 'posts' ? (
+          posts.length === 0 ? (
+            <p className="workspace-feed-empty">No posts yet. Click New Post to share an update with your team.</p>
+          ) : (
+            <div className="workspace-feed-posts">
+              {posts.map((post) => (
+                <article key={post.id} className="workspace-feed-post">
+                  <header className="workspace-feed-post-head">
+                    {renderAvatar(post.user, post.avatarUrl)}
+                    <div className="workspace-feed-post-meta">
+                      <span className="workspace-feed-user">{post.user}</span>
+                      <time className="workspace-feed-post-time" dateTime={new Date(post.timestamp).toISOString()}>
+                        {formatFeedTime(post.timestamp)}
+                      </time>
+                    </div>
+                  </header>
+
+                  {post.lines.length > 0 && (
+                    <div className="workspace-post-body">{renderRichLines(post.lines)}</div>
+                  )}
+
+                  {post.images.length > 0 && (
+                    <div
+                      className={'workspace-post-images' + (post.images.length === 1 ? ' is-single' : '')}
+                    >
+                      {post.images.map((image) => (
+                        <img key={image.id} className="workspace-post-image" src={image.url} alt={image.name} />
+                      ))}
+                    </div>
+                  )}
+
+                  {post.files.length > 0 && (
+                    <div className="workspace-post-files">
+                      <span className="workspace-post-files-label">Linked files</span>
+                      <ul className="workspace-post-files-list">
+                        {post.files.map((file) => (
+                          <li key={file.id}>{renderFeedFileLink(file.id, file.name)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )
+        ) : changes.length === 0 ? (
+          <p className="workspace-feed-empty">No saved changes yet. Edit a file and click Save.</p>
         ) : (
           <ul className="workspace-feed-changes">
-            {posts.map((post) => (
-              <li key={post.id} className="workspace-feed-change">
-                <span className="workspace-feed-change-file">{renderFeedFileLink(post)}</span>
-                <span className="workspace-feed-change-user">{post.user}</span>
-                <span className="workspace-feed-change-time">{formatFeedTime(post.timestamp)}</span>
+            {changes.map((change) => (
+              <li key={change.id} className="workspace-feed-change">
+                <span className="workspace-feed-change-file">
+                  {renderFeedFileLink(change.fileId, change.fileName)}
+                </span>
+                <span className="workspace-feed-change-user">{change.user}</span>
+                <span className="workspace-feed-change-time">{formatFeedTime(change.timestamp)}</span>
               </li>
             ))}
           </ul>
@@ -1224,11 +1557,20 @@ function Workspace() {
               <button
                 type="button"
                 className="workspace-ribbon-pill workspace-ribbon-pill--primary"
-                onClick={openSaveModal}
+                onClick={handleSave}
                 disabled={!(hasFile && selectedNode.dirty)}
-                title={hasFile && selectedNode.dirty ? 'Save changes with a comment' : 'No unsaved changes'}
+                title={hasFile && selectedNode.dirty ? 'Save changes' : 'No unsaved changes'}
               >
                 Save
+              </button>
+              <button
+                type="button"
+                className="workspace-ribbon-pill"
+                onClick={openComposer}
+                disabled={!activeProject}
+                title={activeProject ? 'Write a post for your team' : 'Select or create a project first'}
+              >
+                Post
               </button>
               <button
                 type="button"
@@ -1307,35 +1649,207 @@ function Workspace() {
         <main className="workspace-main">{renderMainScreen()}</main>
       </div>
 
-      {saveModalOpen && selectedNode && (
-        <div className="workspace-modal-overlay" onClick={closeSaveModal}>
-          <div className="workspace-modal" onClick={(e) => e.stopPropagation()}>
-            <h2 className="workspace-modal-title">Save changes</h2>
-            <p className="workspace-modal-subtitle">{selectedNode.name}</p>
-            <form onSubmit={handleSaveChange}>
-              <div className="workspace-modal-field">
-                <label htmlFor="save-comment">Comments (required)</label>
-                <textarea
-                  id="save-comment"
-                  rows={4}
-                  autoFocus
-                  placeholder="Describe what you changed…"
-                  value={saveComment}
-                  onChange={(e) => {
-                    setSaveError('')
-                    setSaveComment(e.target.value)
-                  }}
+      {savePromptOpen && (
+        <div className="workspace-modal-overlay" onClick={closeSavePrompt}>
+          <div
+            className="workspace-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="File saved"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="workspace-modal-title">File saved</h2>
+            <p className="workspace-save-prompt-text">
+              Your file has been saved. Do you want to make a post about it?
+            </p>
+            <label className="workspace-save-prompt-skip">
+              <input
+                type="checkbox"
+                checked={savePromptSkip}
+                onChange={(e) => setSavePromptSkip(e.target.checked)}
+              />
+              Don&apos;t ask me again
+            </label>
+            <div className="workspace-modal-actions">
+              <button type="button" className="workspace-modal-cancel" onClick={handleReturnToFile}>
+                Return to File
+              </button>
+              <button type="button" className="workspace-modal-create" onClick={handleMakePost}>
+                Make Post
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {composerOpen && (
+        <div className="workspace-modal-overlay">
+          <div className="workspace-modal workspace-modal--wide" role="dialog" aria-modal="true" aria-label="New post">
+            <h2 className="workspace-modal-title">New Post</h2>
+            <form onSubmit={handlePublishPost}>
+              <div className="workspace-composer-author">
+                {renderAvatar(
+                  auth.currentUser?.displayName || auth.currentUser?.email || 'You',
+                  auth.currentUser?.photoURL || null
+                )}
+                <span className="workspace-feed-user">
+                  {auth.currentUser?.displayName || auth.currentUser?.email || 'You'}
+                </span>
+              </div>
+
+              <div className="workspace-composer-toolbar">
+                <button
+                  type="button"
+                  className={'workspace-composer-tool' + (composerFormats.bold ? ' is-active' : '')}
+                  onMouseDown={(e) => applyComposerFormat(e, 'bold')}
+                  aria-label="Bold"
+                  aria-pressed={composerFormats.bold}
+                  title="Bold (Ctrl+B)"
+                >
+                  <strong>B</strong>
+                </button>
+                <button
+                  type="button"
+                  className={'workspace-composer-tool' + (composerFormats.italic ? ' is-active' : '')}
+                  onMouseDown={(e) => applyComposerFormat(e, 'italic')}
+                  aria-label="Italic"
+                  aria-pressed={composerFormats.italic}
+                  title="Italic (Ctrl+I)"
+                >
+                  <em>I</em>
+                </button>
+                <button
+                  type="button"
+                  className={'workspace-composer-tool' + (composerFormats.underline ? ' is-active' : '')}
+                  onMouseDown={(e) => applyComposerFormat(e, 'underline')}
+                  aria-label="Underline"
+                  aria-pressed={composerFormats.underline}
+                  title="Underline (Ctrl+U)"
+                >
+                  <span style={{ textDecoration: 'underline' }}>U</span>
+                </button>
+
+                <span className="workspace-composer-toolbar-gap" />
+
+                <button
+                  type="button"
+                  className="workspace-composer-tool workspace-composer-tool--text"
+                  onClick={() => composerImageInputRef.current?.click()}
+                  disabled={composerImages.length >= MAX_POST_IMAGES}
+                >
+                  Attach image
+                </button>
+                <button
+                  type="button"
+                  className={
+                    'workspace-composer-tool workspace-composer-tool--text' + (composerPickerOpen ? ' is-active' : '')
+                  }
+                  onClick={() => setComposerPickerOpen((open) => !open)}
+                  aria-expanded={composerPickerOpen}
+                >
+                  Link files{composerFileIds.length > 0 ? ` (${composerFileIds.length})` : ''}
+                </button>
+                <input
+                  ref={composerImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={handleComposerImages}
                 />
               </div>
-              {saveError && (
-                <p className="workspace-modal-error" role="alert">{saveError}</p>
+
+              <div className="workspace-composer-editor-wrap">
+                {composerEmpty && (
+                  <span className="workspace-composer-placeholder">What do you want to share with the team?</span>
+                )}
+                <div
+                  ref={composerEditorRef}
+                  className="workspace-composer-editor"
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="Post text"
+                  onInput={handleComposerInput}
+                  onPaste={handleComposerPaste}
+                  onKeyUp={refreshComposerFormats}
+                  onMouseUp={refreshComposerFormats}
+                  onFocus={refreshComposerFormats}
+                />
+              </div>
+
+              {composerImages.length > 0 && (
+                <div className="workspace-composer-images">
+                  {composerImages.map((image) => (
+                    <div key={image.id} className="workspace-composer-image">
+                      <img src={image.url} alt={image.name} />
+                      <button
+                        type="button"
+                        className="workspace-composer-remove"
+                        onClick={() => removeComposerImage(image.id)}
+                        aria-label={`Remove ${image.name}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {composerFileIds.length > 0 && (
+                <div className="workspace-composer-chips">
+                  {composerFileIds.map((id) => {
+                    const file = flattenFiles(tree).find((candidate) => candidate.id === id)
+                    if (!file) return null
+                    return (
+                      <span key={id} className="workspace-composer-chip">
+                        <span className="workspace-tree-icon">{FILE_TYPES[file.type]?.icon ?? ICONS.document}</span>
+                        {file.name}
+                        <button
+                          type="button"
+                          className="workspace-composer-chip-remove"
+                          onClick={() => toggleComposerFile(id)}
+                          aria-label={`Unlink ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+
+              {composerPickerOpen && (
+                <div className="workspace-composer-picker">
+                  {flattenFiles(tree).length === 0 ? (
+                    <p className="workspace-composer-picker-empty">This project has no files yet.</p>
+                  ) : (
+                    flattenFiles(tree).map((file) => (
+                      <label key={file.id} className="workspace-composer-picker-row">
+                        <input
+                          type="checkbox"
+                          checked={composerFileIds.includes(file.id)}
+                          onChange={() => toggleComposerFile(file.id)}
+                        />
+                        <span className="workspace-tree-icon">{FILE_TYPES[file.type]?.icon ?? ICONS.document}</span>
+                        <span className="workspace-composer-picker-name">{file.name}</span>
+                        {file.folder && <span className="workspace-composer-picker-folder">{file.folder}</span>}
+                      </label>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {composerError && (
+                <p className="workspace-modal-error" role="alert">{composerError}</p>
               )}
               <div className="workspace-modal-actions">
-                <button type="button" className="workspace-modal-cancel" onClick={closeSaveModal}>
+                <button type="button" className="workspace-modal-cancel" onClick={closeComposer}>
                   Cancel
                 </button>
                 <button type="submit" className="workspace-modal-create">
-                  Save
+                  Post
                 </button>
               </div>
             </form>
