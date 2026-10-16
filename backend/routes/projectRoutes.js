@@ -6,6 +6,7 @@ const {
     updateProject,
     deleteProject,
     assignProjectMemberRole,
+    getProjectMembers,
 } = require('../controllers/projectController');
 
 const { verifyFirebaseToken } = require('../middleware');
@@ -29,6 +30,13 @@ router.patch(
     '/:projectId/members/:userId/role',
     verifyFirebaseToken,
     assignProjectMemberRole
+);
+
+// Get members of a project after authentication.
+router.get(
+    '/:projectId/members',
+    verifyFirebaseToken,
+    getProjectMembers
 );
 
 module.exports = router;
