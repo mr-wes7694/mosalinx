@@ -523,6 +523,8 @@ function Workspace() {
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [savePromptSkip, setSavePromptSkip] = useState(false)
   const [savedFileId, setSavedFileId] = useState(null)
+  // Read from localStorage when the page loads, so changing it on the Settings
+  // page takes effect next time Workspace opens.
   const [skipSavePrompt, setSkipSavePrompt] = useState(() => {
     try {
       return localStorage.getItem('mosalinx.skipSavePrompt') === '1'
@@ -657,6 +659,7 @@ function Workspace() {
 
   // Return to File: just closes the prompt (the save already happened).
   function handleReturnToFile() {
+    // Switch it back on from the Settings page.
     if (savePromptSkip) {
       setSkipSavePrompt(true)
       try {
