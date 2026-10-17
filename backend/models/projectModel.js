@@ -47,6 +47,21 @@ const findProjectMemberRole = async (projectId, userId) => {
     return rows[0]?.role || null;
 };
 
+
+//Retrieve the users and roles for one project's current members. Only return profile fields needed by the team member interface.
+const findProjectMembers = async (projectId) => {
+    const sql =
+        'SELECT u.user_id, u.display_name, u.profile_image_url, pm.role ' +
+        'FROM project_members pm ' +
+        'INNER JOIN users u ON pm.user_id = u.user_id ' +
+        'WHERE pm.project_id = ? ' +
+        'ORDER BY u.display_name';
+
+    const [rows] = await pool.query(sql, [projectId]);
+
+    return rows;
+};
+
 // Update only the project fields provided by the caller.
 const updateProjectDetails = async (projectId, updates) => {
     const allowedFields = ['project_name', 'description'];
@@ -299,6 +314,7 @@ module.exports = {
     findProjectsByUserId,
     findProjectById,
     findProjectMemberRole,
+    findProjectMembers,
     updateProjectDetails,
     updateProjectMemberRole,
     createProjectWithOwner,

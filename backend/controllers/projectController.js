@@ -7,6 +7,7 @@ const {
     findProjectById,
     findProjectMemberRole,
     SUPPORTED_PROJECT_ROLES,
+    findProjectMembers,
     updateProjectDetails,
     updateProjectMemberRole,
     createProjectWithOwner,
@@ -467,10 +468,79 @@ const deleteProject = async (req, res) => {
     }
 };
 
+
+//Retrieve all current members of a project. Only users who belong to the project can view its member list.
+const getProjectMembers = async (req, res) => {
+    try {
+        const firebaseUid = req.user?.uid;
+
+        if (!firebaseUid) {
+            return res.status(401).json({
+                message: 'Authentication required.',
+            });
+        }
+
+        const rawProjectId = req.params.projectId;
+
+        if (
+            typeof rawProjectId !== 'string' ||
+            !/^[1-9]\d*$/.test(rawProjectId) ||
+            !Number.isSafeInteger(Number(rawProjectId))
+        ) {
+            return res.status(400).json({
+                message: 'A valid project ID is required.',
+            });
+        }
+
+        const projectId = Number(rawProjectId);
+        const requester = await findUserByFirebaseUid(firebaseUid);
+
+        if (!requester) {
+            return res.status(404).json({
+                message: 'Mosalinx user not found.',
+            });
+        }
+
+        const project = await findProjectById(projectId);
+
+        if (!project) {
+            return res.status(404).json({
+                message: 'Project not found.',
+            });
+        }
+
+        // Require project membership before returning any member data.
+        const requesterRole = await findProjectMemberRole(
+            projectId,
+            requester.user_id
+        );
+
+        if (!requesterRole) {
+            return res.status(403).json({
+                message: 'You must be a project member to view its members.',
+            });
+        }
+
+        const members = await findProjectMembers(projectId);
+
+        return res.status(200).json({
+            project_id: projectId,
+            members,
+        });
+    } catch (error) {
+        console.error('Failed to retrieve project members:', error);
+
+        return res.status(500).json({
+            message: 'Failed to retrieve project members.',
+        });
+    }
+};
+
 module.exports = {
     getUserProjects,
     createProject,
     updateProject,
     deleteProject,
     assignProjectMemberRole,
+    getProjectMembers,
 };
