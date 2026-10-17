@@ -6,12 +6,14 @@ const {
     findProjectsByUserId,
     findProjectById,
     findProjectMemberRole,
+    SUPPORTED_PROJECT_ROLES,
     updateProjectDetails,
     updateProjectMemberRole,
     createProjectWithOwner,
     deleteProjectWithOwner,
 } = require('../models/projectModel');
 const { deleteResourceStorageFile } = require('../utils/storage');
+const { checkProjectPermission } = require('../utils/projectPermissions');
 
 // Get projects that belong to the authenticated user.
 const getUserProjects = async (req, res) => {
@@ -220,12 +222,13 @@ const updateProject = async (req, res) => {
             });
         }
 
-        const role = await findProjectMemberRole(
+        const permission = await checkProjectPermission(
             projectId,
-            user.user_id
+            user.user_id,
+            ['owner']
         );
 
-        if (role !== 'owner') {
+        if (!permission.allowed) {
             return res.status(403).json({
                 message: 'Only project owners can update project details.',
             });
@@ -287,7 +290,7 @@ const assignProjectMemberRole = async (req, res) => {
         const { role } = req.body || {};
 
         // Accept only the roles currently supported by Mosalinx.
-        const supportedRoles = ['owner', 'collaborator'];
+        const supportedRoles = SUPPORTED_PROJECT_ROLES;
 
         if (
             typeof role !== 'string' ||
@@ -315,12 +318,13 @@ const assignProjectMemberRole = async (req, res) => {
         }
 
         // Only an existing project owner may change member roles.
-        const requesterRole = await findProjectMemberRole(
+        const requesterPermission = await checkProjectPermission(
             projectId,
-            requester.user_id
+            requester.user_id,
+            ['owner']
         );
 
-        if (requesterRole !== 'owner') {
+        if (!requesterPermission.allowed) {
             return res.status(403).json({
                 message: 'Only project owners can manage member roles.',
             });

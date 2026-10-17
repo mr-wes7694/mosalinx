@@ -1,5 +1,5 @@
 const { findUserByFirebaseUid } = require('../models/userModel');
-const { findProjectMemberRole } = require('../models/projectModel');
+const { checkProjectPermission } = require('../utils/projectPermissions');
 const {
     createWorkspacePost,
     findWorkspacePostById,
@@ -64,12 +64,14 @@ const createPost = async (req, res) => {
             });
         }
 
-        const memberRole = await findProjectMemberRole(
+        // Check that the user belongs to this project.
+        const permission = await checkProjectPermission(
             projectId,
-            user.user_id
+            user.user_id,
+            ['owner', 'collaborator']
         );
 
-        if (!memberRole) {
+        if (!permission.allowed) {
             return res.status(403).json({
                 message: 'You are not a member of this project.',
             });
@@ -159,21 +161,22 @@ const updatePost = async (req, res) => {
             });
         }
 
-        const memberRole = await findProjectMemberRole(
-            existingPost.project_id,
-            user.user_id
-        );
+	const permission = await checkProjectPermission(
+	    existingPost.project_id,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!memberRole) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
-        const isPostCreator =
-            existingPost.created_by === user.user_id;
+	const isPostCreator =
+	    existingPost.created_by === user.user_id;
 
-        const isProjectOwner = memberRole === 'owner';
+	const isProjectOwner = permission.role === 'owner';
 
         if (!isPostCreator && !isProjectOwner) {
             return res.status(403).json({
@@ -236,19 +239,20 @@ const deletePost = async (req, res) => {
             });
         }
 
-        const memberRole = await findProjectMemberRole(
-            post.project_id,
-            user.user_id
-        );
+	const permission = await checkProjectPermission(
+	    post.project_id,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!memberRole) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
-        const isPostCreator = post.created_by === user.user_id;
-        const isProjectOwner = memberRole === 'owner';
+	const isPostCreator = post.created_by === user.user_id;
+	const isProjectOwner = permission.role === 'owner';
 
         if (!isPostCreator && !isProjectOwner) {
             return res.status(403).json({

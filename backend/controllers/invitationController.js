@@ -1,5 +1,5 @@
 const { findUserByFirebaseUid, findUserByEmail } = require('../models/userModel');
-const { findProjectMemberRole } = require('../models/projectModel');
+const { checkProjectPermission } = require('../utils/projectPermissions');
 const {
     findProjectById,
     findProjectMember,
@@ -75,12 +75,13 @@ const createProjectInvitation = async (req, res) => {
         }
 
         // Only project owners can send invitations.
-        const senderRole = await findProjectMemberRole(
+        const permission = await checkProjectPermission(
             normalizedProjectId,
-            sender.user_id
+            sender.user_id,
+            ['owner']
         );
 
-        if (!senderRole || senderRole.toLowerCase() !== 'owner') {
+        if (!permission.allowed) {
             return res.status(403).json({
                 message: 'Only project owners can send invitations.',
             });

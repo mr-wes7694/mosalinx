@@ -295,6 +295,7 @@ const deleteProjectWithOwner = async (projectId, userId) => {
 };
 
 module.exports = {
+    SUPPORTED_PROJECT_ROLES,
     findProjectsByUserId,
     findProjectById,
     findProjectMemberRole,
