@@ -24,6 +24,31 @@ const DEFAULT_SETTINGS = {
   highlightTextColor: 'Black',
   moduleZoom: false,
   zoomShortcut: 'Ctrl + Click',
+  askToPostAfterSave: true,
+}
+
+// askToPostAfterSave is stored in this browser's localStorage (the Workspace
+// page reads the same key), not in the backend settings, so it's merged in
+// after loading and split back out before saving.
+const SKIP_SAVE_PROMPT_KEY = 'mosalinx.skipSavePrompt'
+
+function withLocalPrefs(settings) {
+  let skip = false
+  try {
+    skip = localStorage.getItem(SKIP_SAVE_PROMPT_KEY) === '1'
+  } catch {
+    // storage unavailable: fall back to asking
+  }
+  return { ...settings, askToPostAfterSave: !skip }
+}
+
+function saveLocalPrefs(askToPostAfterSave) {
+  try {
+    if (askToPostAfterSave) localStorage.removeItem(SKIP_SAVE_PROMPT_KEY)
+    else localStorage.setItem(SKIP_SAVE_PROMPT_KEY, '1')
+  } catch {
+    // storage unavailable: the choice just lasts until reload
+  }
 }
 
 const THEMES = [
@@ -70,6 +95,19 @@ function GeneralSettings({ values, onChange }) {
             onChange={(e) => onChange('notifyPush', e.target.checked)}
           />
           Browser Push Notification
+        </label>
+      </section>
+
+      <section className="settings-section">
+        <h2 className="settings-section-title">Workspace</h2>
+
+        <label className="settings-checkbox-row">
+          <input
+            type="checkbox"
+            checked={values.askToPostAfterSave}
+            onChange={(e) => onChange('askToPostAfterSave', e.target.checked)}
+          />
+          Ask if I want to make a post after saving a file
         </label>
       </section>
 
@@ -309,8 +347,8 @@ function Settings() {
   const { currentUser } = useAuth()
 
   const [activeCategory, setActiveCategory] = useState('General')
-  const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS)
-  const [draftSettings, setDraftSettings] = useState(DEFAULT_SETTINGS)
+  const [savedSettings, setSavedSettings] = useState(() => withLocalPrefs(DEFAULT_SETTINGS))
+  const [draftSettings, setDraftSettings] = useState(() => withLocalPrefs(DEFAULT_SETTINGS))
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
   const [isLoading, setIsLoading] = useState(true)
@@ -331,7 +369,7 @@ function Settings() {
         setIsLoading(true)
         setErrorMessage('')
 
-        const settings = await getUserSettings(currentUser)
+        const settings = withLocalPrefs(await getUserSettings(currentUser))
 
         if (!isActive) return
 
@@ -385,10 +423,12 @@ function Settings() {
       setErrorMessage('')
       setSuccessMessage('')
 
-      const updatedSettings = await updateUserSettings(
-        currentUser,
-        draftSettings
+      const { askToPostAfterSave, ...serverSettings } = draftSettings
+
+      const updatedSettings = withLocalPrefs(
+        await updateUserSettings(currentUser, serverSettings)
       )
+      saveLocalPrefs(askToPostAfterSave)
 
       setSavedSettings(updatedSettings)
       setDraftSettings(updatedSettings)

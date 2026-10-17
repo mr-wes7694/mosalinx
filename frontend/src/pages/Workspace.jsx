@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
+import { auth } from '../firebase'
 import './Workspace.css'
 
-/* ---------- Mock data / file-type definitions ----------
-   No workspace backend exists yet, so the
-   file tree, file contents, and "who else is viewing" presence are all local
-   state seeded with sample data. Swapping in real persistence later means
-   replacing the useState seeds below with fetched data.
-   Editor logic doesn't need to change. */
+// ---------- Mock data / file-type definitions ----------
+// No workspace backend exists yet, so the
+// file tree, file contents, and "who else is viewing" presence are all local
+// state seeded with sample data. Swapping in real persistence later means
+// replacing the useState seeds below with fetched data.
+// Editor logic doesn't need to change.
 
 let idSeed = 1000
 function nextId() {
@@ -92,10 +93,10 @@ const FILE_TYPES = {
 
 const NEW_FILE_ORDER = ['document', 'spreadsheet', 'presentation', 'sql', 'code']
 
-/* Classic MS-Office-style ribbon: a tab strip + grouped tool clusters, with
-   a signature accent color per app (Word blue, Excel green, PowerPoint
-   orange; SQL/code get invented but analogous colors). Document is also the
-   default/placeholder ribbon shown grayed out when nothing is selected. */
+// Classic MS-Office-style ribbon: a tab strip + grouped tool clusters, with
+// a signature accent color per app (Word blue, Excel green, PowerPoint
+// orange; SQL/code get invented but analogous colors). Document is also the
+// default/placeholder ribbon shown grayed out when nothing is selected.
 const RIBBON_THEMES = {
   document: { accent: '#2b579a', tabs: ['Home', 'Insert', 'Design', 'Layout', 'References', 'Review', 'View'] },
   spreadsheet: { accent: '#217346', tabs: ['Home', 'Insert', 'Page Layout', 'Formulas', 'Data', 'Review', 'View'] },
@@ -197,6 +198,198 @@ const INITIAL_TREE = [
   },
 ]
 
+// ---------- Feed (posts + saved changes) ----------
+// The feed has two separate streams, both local state seeded with samples
+// until a backend exists:
+//
+// - posts: written in the post composer (rich text, images, linked files).
+//   { id, user, avatarUrl, lines, images: [{ id, name, url }],
+//     files: [{ id, name }], timestamp }
+//   `lines` is the formatted body as plain data (see serializeEditor), so it
+//   renders as React elements and never needs innerHTML.
+//   Backend dev: images need uploading to storage (the url here is a
+//   temporary in-browser object URL), and avatarUrl should come from the
+//   user's profile_image_url.
+//
+// - changes: one entry per Save click — { id, user, fileId, fileName,
+//   timestamp }. Saving no longer asks for a comment or creates a post.
+
+const NOW = Date.now()
+const MINUTE = 60 * 1000
+const HOUR = 60 * MINUTE
+
+const MAX_POST_IMAGES = 4
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+function plainLines(text) {
+  return text.split('\n').map((line) => [{ text: line }])
+}
+
+const INITIAL_POSTS = [
+  {
+    id: 'post-1',
+    user: 'Veronica Johnson',
+    avatarUrl: null,
+    lines: [
+      [
+        { text: 'Budget update: ', bold: true },
+        { text: 'refreshed hosting and licensing costs to match the latest vendor quotes.' },
+      ],
+      [{ text: 'Let me know if anything looks off before the client review.', italic: true }],
+    ],
+    images: [],
+    files: [{ id: 'file-budget', name: 'Budget.mosheet' }],
+    timestamp: NOW - 45 * MINUTE,
+  },
+  {
+    id: 'post-2',
+    user: 'Lesly Martinez',
+    avatarUrl: null,
+    lines: plainLines('Filtered the user report to active accounts only and sorted by most recent login.'),
+    images: [],
+    files: [{ id: 'file-query', name: 'active_users.sql' }],
+    timestamp: NOW - 5 * HOUR,
+  },
+  {
+    id: 'post-3',
+    user: 'Veronica Johnson',
+    avatarUrl: null,
+    lines: plainLines(
+      'Added the overview section and next steps to the proposal.\nThe pitch deck still needs the problem slide tightened up.'
+    ),
+    images: [],
+    files: [
+      { id: 'file-proposal', name: 'Client Proposal.modoc' },
+      { id: 'file-pitch', name: 'Pitch Deck.moslide' },
+    ],
+    timestamp: NOW - 26 * HOUR,
+  },
+]
+
+const INITIAL_CHANGES = [
+  { id: 'change-1', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
+  { id: 'change-2', user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
+  { id: 'change-3', user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
+]
+
+// Turns the composer's contentEditable DOM into plain data: an array of
+// lines, each an array of { text, bold, italic, underline } runs. Anything
+// that isn't text/bold/italic/underline/line breaks is dropped, so pasted or
+// injected markup can't survive into a post.
+function serializeEditor(root) {
+  const lines = [[]]
+  const currentLine = () => lines[lines.length - 1]
+  const startNewLine = () => lines.push([])
+
+  function walk(node, style) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.replace(/ /g, ' ')
+      if (text) currentLine().push({ text, ...style })
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const tag = node.tagName
+    if (tag === 'BR') {
+      startNewLine()
+      return
+    }
+
+    const next = { ...style }
+    if (tag === 'B' || tag === 'STRONG') next.bold = true
+    if (tag === 'I' || tag === 'EM') next.italic = true
+    if (tag === 'U') next.underline = true
+    // Some browsers express formatting as inline CSS instead of tags.
+    const weight = node.style?.fontWeight
+    if (weight === 'bold' || Number(weight) >= 600) next.bold = true
+    if (node.style?.fontStyle === 'italic') next.italic = true
+    if ((node.style?.textDecorationLine || node.style?.textDecoration || '').includes('underline')) {
+      next.underline = true
+    }
+
+    const isBlock = tag === 'DIV' || tag === 'P'
+    if (isBlock && currentLine().length > 0) startNewLine()
+    node.childNodes.forEach((child) => walk(child, next))
+    if (isBlock && currentLine().length > 0) startNewLine()
+  }
+
+  root.childNodes.forEach((child) => walk(child, {}))
+
+  while (lines.length > 0 && currentLine().every((run) => !run.text.trim())) {
+    if (lines.length === 1) break
+    lines.pop()
+  }
+  return lines
+}
+
+function linesHaveText(lines) {
+  return lines.some((runs) => runs.some((run) => run.text.trim()))
+}
+
+function renderRichLines(lines) {
+  return lines.map((runs, lineIndex) => (
+    <p key={lineIndex} className="workspace-post-line">
+      {runs.length === 0 ? (
+        <br />
+      ) : (
+        runs.map((run, runIndex) => (
+          <span
+            key={runIndex}
+            style={{
+              fontWeight: run.bold ? 700 : undefined,
+              fontStyle: run.italic ? 'italic' : undefined,
+              textDecoration: run.underline ? 'underline' : undefined,
+            }}
+          >
+            {run.text}
+          </span>
+        ))
+      )}
+    </p>
+  ))
+}
+
+const AVATAR_COLORS = ['#4a8f5c', '#1b3a5c', '#c0392b', '#d9822b', '#5c2d91', '#007acc']
+
+function colorForName(name) {
+  let hash = 0
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) % 997
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function getInitials(name) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+// Profile picture if the user has one, otherwise a colored initials circle.
+function renderAvatar(name, avatarUrl, extraClass = '') {
+  const className = 'workspace-feed-avatar' + (extraClass ? ` ${extraClass}` : '')
+  if (avatarUrl) {
+    return <img className={className + ' workspace-feed-avatar--img'} src={avatarUrl} alt="" />
+  }
+  return (
+    <span className={className} style={{ background: colorForName(name) }} aria-hidden="true">
+      {getInitials(name)}
+    </span>
+  )
+}
+
+function formatFeedTime(timestamp) {
+  return new Date(timestamp).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 // ---------- Tree helpers (immutable) ----------
 
 function findNode(nodes, id) {
@@ -244,6 +437,20 @@ function insertNode(nodes, folderId, newNode) {
   })
 }
 
+// Every file in the tree (folders excluded), each with the name of the
+// folder it lives in — used by the composer's "link files" picker.
+function flattenFiles(nodes, folderName = '') {
+  const files = []
+  for (const node of nodes) {
+    if (node.type === 'folder') {
+      files.push(...flattenFiles(node.children ?? [], node.name))
+    } else {
+      files.push({ id: node.id, name: node.name, type: node.type, folder: folderName })
+    }
+  }
+  return files
+}
+
 function countFilesOfType(nodes, type) {
   let count = 0
   for (const node of nodes) {
@@ -284,33 +491,65 @@ function Workspace() {
     setActiveProject,
     loadingProjects,
     projectError,
-    /* Not implemented on the backend/provider yet — this is a placeholder
-       contract for the backend dev to fill in: createProject({ project_name,
-       description }) should create the project, add it to `projects`, and
-       set it as the active project (see handleCreateProject below for the
-       exact shape this file calls it with). Until then this is undefined and
-       the "New Project..." form shows a friendly error instead of crashing. */
+    // Not implemented on the backend/provider yet — this is a placeholder
+    // contract for the backend dev to fill in: createProject({ project_name,
+    // description }) should create the project, add it to `projects`, and
+    // set it as the active project (see handleCreateProject below for the
+    // exact shape this file calls it with). Until then this is undefined and
+    // the "New Project..." form shows a friendly error instead of crashing.
     createProject,
   } = useProject()
 
-  /* All hooks run unconditionally, before the loading/error/empty guard
-     clauses below. The file tree itself isn't backed by a project-scoped
-     endpoint yet, so it's seeded once here. */
+  // All hooks run unconditionally, before the loading/error/empty guard
+  // clauses below. The file tree itself isn't backed by a project-scoped
+  // endpoint yet, so it's seeded once here.
   const [tree, setTree] = useState(INITIAL_TREE)
   const [expandedFolders, setExpandedFolders] = useState(
     () => new Set(['folder-docs', 'folder-sheets', 'folder-slides', 'folder-db', 'folder-src'])
   )
-  const [selectedId, setSelectedId] = useState('file-proposal')
+  // No file is selected on load, so the feed is the landing screen.
+  const [selectedId, setSelectedId] = useState(null)
   const [newFileMenuOpen, setNewFileMenuOpen] = useState(false)
   const [activeCell, setActiveCell] = useState('A1')
   const [activeRibbonTab, setActiveRibbonTab] = useState('Home')
   const [explorerOpen, setExplorerOpen] = useState(true)
+  const [feedOpen, setFeedOpen] = useState(false)
+  const [feedView, setFeedView] = useState('posts')
+  const [posts, setPosts] = useState(INITIAL_POSTS)
+  const [changes, setChanges] = useState(INITIAL_CHANGES)
+  const [composerOpen, setComposerOpen] = useState(false)
+  // Save prompt: asks whether a save should also become a post. "Don't ask
+  // again" is remembered in this browser only.
+  const [savePromptOpen, setSavePromptOpen] = useState(false)
+  const [savePromptSkip, setSavePromptSkip] = useState(false)
+  const [savedFileId, setSavedFileId] = useState(null)
+  // Read from localStorage when the page loads, so changing it on the Settings
+  // page takes effect next time Workspace opens.
+  const [skipSavePrompt, setSkipSavePrompt] = useState(() => {
+    try {
+      return localStorage.getItem('mosalinx.skipSavePrompt') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [composerEmpty, setComposerEmpty] = useState(true)
+  const [composerFormats, setComposerFormats] = useState({ bold: false, italic: false, underline: false })
+  const [composerImages, setComposerImages] = useState([])
+  const [composerFileIds, setComposerFileIds] = useState([])
+  const [composerPickerOpen, setComposerPickerOpen] = useState(false)
+  const [composerError, setComposerError] = useState('')
+  const composerEditorRef = useRef(null)
+  const composerImageInputRef = useRef(null)
+
+  // Put the cursor in the editor as soon as the composer opens.
+  useEffect(() => {
+    if (composerOpen) composerEditorRef.current?.focus()
+  }, [composerOpen])
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [createProjectError, setCreateProjectError] = useState('')
-  const [createProjectSuccess, setCreateProjectSuccess] = useState('')
 
   const handleProjectChange = (event) => {
     const selectedProject = projects.find(
@@ -323,7 +562,6 @@ function Workspace() {
   }
 
   function openNewProjectModal() {
-    setCreateProjectSuccess('')
     setNewProjectName('')
     setNewProjectDescription('')
     setCreateProjectError('')
@@ -343,6 +581,13 @@ function Workspace() {
       return
     }
 
+    if (!createProject) {
+      // Backend dev: wire up ProjectProvider's createProject and this will
+      // start working with no changes needed here.
+      setCreateProjectError('Project creation isn’t connected to the backend yet.')
+      return
+    }
+
     setCreatingProject(true)
     setCreateProjectError('')
     try {
@@ -350,7 +595,6 @@ function Workspace() {
         project_name: newProjectName.trim(),
         description: newProjectDescription.trim(),
       })
-      setCreateProjectSuccess('Project created successfully!')
       setNewProjectModalOpen(false)
     } catch (error) {
       setCreateProjectError(error.message || 'Failed to create project.')
@@ -378,11 +622,196 @@ function Workspace() {
     setActiveCell('A1')
     setNewFileMenuOpen(false)
     setActiveRibbonTab('Home')
+    // Picking a file always brings it to the front, even if the feed was
+    // open over the previous one.
+    setFeedOpen(false)
   }
 
-  function updateSelectedFile(updater) {
+  // Any real edit flags the file as having unsaved changes (node.dirty),
+  // which is what enables the Save button. Pass markDirty = false for
+  // view-only state like which slide is showing.
+  function updateSelectedFile(updater, markDirty = true) {
     if (!selectedId) return
-    setTree((prev) => updateNode(prev, selectedId, (node) => ({ ...node, ...updater(node) })))
+    setTree((prev) =>
+      updateNode(prev, selectedId, (node) => {
+        const changes = updater(node)
+        if (Object.keys(changes).length === 0) return node
+        return { ...node, ...changes, ...(markDirty ? { dirty: true } : {}) }
+      })
+    )
+  }
+
+  // Clicking Save saves right away, then asks whether to make a post about it
+  // (unless the user chose "don't ask again").
+  function handleSave() {
+    if (!selectedNode?.dirty) return
+    const fileId = selectedNode.id
+    commitSave()
+    if (skipSavePrompt) return
+    setSavedFileId(fileId)
+    setSavePromptSkip(false)
+    setSavePromptOpen(true)
+  }
+
+  function closeSavePrompt() {
+    setSavePromptOpen(false)
+  }
+
+  // Return to File: just closes the prompt (the save already happened).
+  function handleReturnToFile() {
+    // Switch it back on from the Settings page.
+    if (savePromptSkip) {
+      setSkipSavePrompt(true)
+      try {
+        localStorage.setItem('mosalinx.skipSavePrompt', '1')
+      } catch {
+        // storage unavailable: the choice just lasts until reload
+      }
+    }
+    setSavePromptOpen(false)
+  }
+
+  // Opens the composer with the saved file already linked.
+  function handleMakePost() {
+    setSavePromptOpen(false)
+    openComposer()
+    if (savedFileId) setComposerFileIds([savedFileId])
+  }
+
+  // The save itself: the file's unsaved flag is cleared and an entry
+  // (file, user, time) goes into the Changes view.
+  function commitSave() {
+    if (!selectedNode?.dirty) return
+
+    const user = auth.currentUser?.displayName || auth.currentUser?.email || 'You'
+    setChanges((prev) => [
+      { id: nextId(), user, fileId: selectedNode.id, fileName: selectedNode.name, timestamp: Date.now() },
+      ...prev,
+    ])
+    setTree((prev) => updateNode(prev, selectedNode.id, (node) => ({ ...node, dirty: false })))
+  }
+
+  // ---------- Post composer ----------
+
+  function openComposer() {
+    setComposerEmpty(true)
+    setComposerFormats({ bold: false, italic: false, underline: false })
+    setComposerImages([])
+    setComposerFileIds([])
+    setComposerPickerOpen(false)
+    setComposerError('')
+    setComposerOpen(true)
+  }
+
+  function closeComposer() {
+    // Images that never made it into a post don't need to stay in memory.
+    composerImages.forEach((image) => URL.revokeObjectURL(image.url))
+    setComposerImages([])
+    setComposerOpen(false)
+  }
+
+  function refreshComposerFormats() {
+    setComposerFormats({
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+    })
+  }
+
+  // Toolbar buttons use onMouseDown + preventDefault so clicking them
+  // doesn't steal focus or collapse the text selection first.
+  function applyComposerFormat(event, command) {
+    event.preventDefault()
+    composerEditorRef.current?.focus()
+    document.execCommand(command)
+    refreshComposerFormats()
+  }
+
+  function handleComposerInput() {
+    const editor = composerEditorRef.current
+    setComposerEmpty(!editor || editor.innerText.trim() === '')
+    setComposerError('')
+  }
+
+  // Paste as plain text so outside formatting can't sneak into the post.
+  function handleComposerPaste(event) {
+    event.preventDefault()
+    const text = event.clipboardData.getData('text/plain')
+    document.execCommand('insertText', false, text)
+  }
+
+  function handleComposerImages(event) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (files.length === 0) return
+
+    const accepted = []
+    let problem = ''
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        problem = `${file.name} isn’t an image.`
+      } else if (file.size > MAX_IMAGE_BYTES) {
+        problem = `${file.name} is larger than 5 MB.`
+      } else if (composerImages.length + accepted.length >= MAX_POST_IMAGES) {
+        problem = `You can attach up to ${MAX_POST_IMAGES} images.`
+      } else {
+        accepted.push({ id: nextId(), name: file.name, url: URL.createObjectURL(file) })
+      }
+    }
+
+    if (accepted.length > 0) setComposerImages((prev) => [...prev, ...accepted])
+    setComposerError(problem)
+  }
+
+  function removeComposerImage(id) {
+    setComposerImages((prev) => {
+      const removed = prev.find((image) => image.id === id)
+      if (removed) URL.revokeObjectURL(removed.url)
+      return prev.filter((image) => image.id !== id)
+    })
+  }
+
+  function toggleComposerFile(id) {
+    setComposerFileIds((prev) => (prev.includes(id) ? prev.filter((fileId) => fileId !== id) : [...prev, id]))
+  }
+
+  function handlePublishPost(event) {
+    event.preventDefault()
+    const editor = composerEditorRef.current
+    if (!editor) return
+
+    const lines = serializeEditor(editor)
+    const hasText = linesHaveText(lines)
+    if (!hasText && composerImages.length === 0 && composerFileIds.length === 0) {
+      setComposerError('Write something, or attach an image or a file, before posting.')
+      return
+    }
+
+    const currentUser = auth.currentUser
+    const allFiles = flattenFiles(tree)
+    const linkedFiles = composerFileIds
+      .map((id) => allFiles.find((file) => file.id === id))
+      .filter(Boolean)
+      .map((file) => ({ id: file.id, name: file.name }))
+
+    setPosts((prev) => [
+      {
+        id: nextId(),
+        user: currentUser?.displayName || currentUser?.email || 'You',
+        avatarUrl: currentUser?.photoURL || null,
+        lines: hasText ? lines : [],
+        images: composerImages,
+        files: linkedFiles,
+        timestamp: Date.now(),
+      },
+      ...prev,
+    ])
+
+    // The images now belong to the post, so don't revoke them here.
+    setComposerImages([])
+    setComposerOpen(false)
+    setFeedView('posts')
+    setFeedOpen(true)
   }
 
   function createNewFile(type) {
@@ -390,7 +819,8 @@ function Workspace() {
     const count = countFilesOfType(tree, type) + 1
     const baseName = `Untitled ${typeInfo.label} ${count}`
     const name = type === 'code' ? `${baseName}.js` : `${baseName}${typeInfo.extension}`
-    const newNode = buildEmptyFileNode(type, name)
+    // A brand-new file starts out unsaved so it can be posted to the feed.
+    const newNode = { ...buildEmptyFileNode(type, name), dirty: true }
 
     let targetFolder = 'ROOT'
     if (selectedNode) {
@@ -406,6 +836,7 @@ function Workspace() {
     setActiveCell('A1')
     setNewFileMenuOpen(false)
     setActiveRibbonTab('Home')
+    setFeedOpen(false)
   }
 
   // ---------- Ribbon tool actions ----------
@@ -461,7 +892,7 @@ function Workspace() {
   }
 
   function setActiveSlideIndex(idx) {
-    updateSelectedFile(() => ({ activeSlideIndex: idx }))
+    updateSelectedFile(() => ({ activeSlideIndex: idx }), false)
   }
 
   function updateSlideField(field, value) {
@@ -514,19 +945,22 @@ function Workspace() {
         >
           <span className="workspace-tree-icon">{typeInfo?.icon ?? ICONS.document}</span>
           <span className="workspace-tree-label">{node.name}</span>
+          {node.dirty && (
+            <span className="workspace-tree-unsaved" title="Unsaved changes" aria-label="Unsaved changes" />
+          )}
           {node.viewers?.length > 0 && <span className="workspace-tree-dot" aria-hidden="true" />}
         </button>
       )
     })
   }
 
-  /* A ribbon "group" is Office's unit of organization: a cluster of related
-     buttons with a small caption underneath (e.g. "Font", "Paragraph",
-     "Clipboard"). Most groups below mix real, wired-up controls (Bold/Align,
-     cell formatting, slide management, Run) with purely decorative ones
-     (Paste/Cut/Copy, font-name pickers, style galleries) that exist to sell
-     the authentic Office look. Those are plain buttons with no onClick, so
-     they're visually present but inert rather than faking functionality. */
+  // A ribbon "group" is Office's unit of organization: a cluster of related
+  // buttons with a small caption underneath (e.g. "Font", "Paragraph",
+  // "Clipboard"). Most groups below mix real, wired-up controls (Bold/Align,
+  // cell formatting, slide management, Run) with purely decorative ones
+  // (Paste/Cut/Copy, font-name pickers, style galleries) that exist to sell
+  // the authentic Office look — those are plain buttons with no onClick, so
+  // they're visually present but inert rather than faking functionality.
 
   function RibbonButton({ active, big, onClick, children, ...rest }) {
     return (
@@ -564,13 +998,14 @@ function Workspace() {
     )
   }
 
-  /* When the ribbon is disabled there's no real node to read formatting
-    state from. This stands in so the Word/document groups can still render
-    their inert placeholder state instead of crashing on selectedNode.bold etc. */
+  // When the ribbon is disabled (no file selected, or a folder is
+  // selected) there's no real node to read formatting state from — this
+  // stands in so the Word/document groups can still render their inert
+  // placeholder state instead of crashing on selectedNode.bold etc.
   const DISABLED_NODE_STATE = { bold: false, italic: false, underline: false, align: 'left', formats: {}, cells: {} }
 
   function renderHomeGroups() {
-    const node = ribbonDisabled ? DISABLED_NODE_STATE : selectedNode
+    const node = hasFile ? selectedNode : DISABLED_NODE_STATE
     switch (effectiveType) {
       case 'document':
         return (
@@ -755,6 +1190,116 @@ function Workspace() {
     return renderHomeGroups()
   }
 
+  // A file name in the feed opens that file (if it still exists in the tree).
+  function renderFeedFileLink(fileId, fileName) {
+    const node = findNode(tree, fileId)
+    if (!node) {
+      return <span className="workspace-feed-file workspace-feed-file--gone">{fileName}</span>
+    }
+    return (
+      <button type="button" className="workspace-feed-file" onClick={() => selectNode(node.id)}>
+        <span className="workspace-feed-file-icon">{FILE_TYPES[node.type]?.icon ?? ICONS.document}</span>
+        {fileName}
+      </button>
+    )
+  }
+
+  function renderFeed() {
+    return (
+      <div className="workspace-feed">
+        <div className="workspace-feed-header">
+          <h2 className="workspace-feed-title">Project Feed</h2>
+          <div className="workspace-feed-header-actions">
+            <div className="workspace-feed-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedView === 'posts'}
+                className={'workspace-feed-tab' + (feedView === 'posts' ? ' is-active' : '')}
+                onClick={() => setFeedView('posts')}
+              >
+                Posts
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedView === 'changes'}
+                className={'workspace-feed-tab' + (feedView === 'changes' ? ' is-active' : '')}
+                onClick={() => setFeedView('changes')}
+              >
+                Changes
+              </button>
+            </div>
+            <button type="button" className="workspace-feed-new-post" onClick={openComposer}>
+              {ICONS.plus} New Post
+            </button>
+          </div>
+        </div>
+
+        {feedView === 'posts' ? (
+          posts.length === 0 ? (
+            <p className="workspace-feed-empty">No posts yet. Click New Post to share an update with your team.</p>
+          ) : (
+            <div className="workspace-feed-posts">
+              {posts.map((post) => (
+                <article key={post.id} className="workspace-feed-post">
+                  <header className="workspace-feed-post-head">
+                    {renderAvatar(post.user, post.avatarUrl)}
+                    <div className="workspace-feed-post-meta">
+                      <span className="workspace-feed-user">{post.user}</span>
+                      <time className="workspace-feed-post-time" dateTime={new Date(post.timestamp).toISOString()}>
+                        {formatFeedTime(post.timestamp)}
+                      </time>
+                    </div>
+                  </header>
+
+                  {post.lines.length > 0 && (
+                    <div className="workspace-post-body">{renderRichLines(post.lines)}</div>
+                  )}
+
+                  {post.images.length > 0 && (
+                    <div
+                      className={'workspace-post-images' + (post.images.length === 1 ? ' is-single' : '')}
+                    >
+                      {post.images.map((image) => (
+                        <img key={image.id} className="workspace-post-image" src={image.url} alt={image.name} />
+                      ))}
+                    </div>
+                  )}
+
+                  {post.files.length > 0 && (
+                    <div className="workspace-post-files">
+                      <span className="workspace-post-files-label">Linked files</span>
+                      <ul className="workspace-post-files-list">
+                        {post.files.map((file) => (
+                          <li key={file.id}>{renderFeedFileLink(file.id, file.name)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )
+        ) : changes.length === 0 ? (
+          <p className="workspace-feed-empty">No saved changes yet. Edit a file and click Save.</p>
+        ) : (
+          <ul className="workspace-feed-changes">
+            {changes.map((change) => (
+              <li key={change.id} className="workspace-feed-change">
+                <span className="workspace-feed-change-file">
+                  {renderFeedFileLink(change.fileId, change.fileName)}
+                </span>
+                <span className="workspace-feed-change-user">{change.user}</span>
+                <span className="workspace-feed-change-time">{formatFeedTime(change.timestamp)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
   function renderMainScreen() {
     if (!activeProject) {
       return (
@@ -764,20 +1309,10 @@ function Workspace() {
       )
     }
 
-    if (!selectedNode) {
-      return (
-        <div className="workspace-empty">
-          <p>Select a file to open it, or create a new one from the ribbon.</p>
-        </div>
-      )
-    }
-
-    if (selectedNode.type === 'folder') {
-      return (
-        <div className="workspace-empty">
-          <p>This is a folder. Select a file inside it, or create a new file here.</p>
-        </div>
-      )
+    // The feed is the landing screen whenever no file is selected, and can
+    // also be toggled open over the current file.
+    if (feedVisible) {
+      return renderFeed()
     }
 
     switch (selectedNode.type) {
@@ -903,11 +1438,17 @@ function Workspace() {
 
   const viewers = activeProject && selectedNode?.type !== 'folder' ? selectedNode?.viewers ?? [] : []
 
-  /* The ribbon is disabled whenever there's no real file to act on,
-    no project, no selection or a folder selected. Otherwise,
-    it reflects the selected file's type. */
-  const ribbonDisabled = !activeProject || !selectedNode || selectedNode.type === 'folder'
-  const effectiveType = !ribbonDisabled && RIBBON_THEMES[selectedNode.type] ? selectedNode.type : 'document'
+  // hasFile: a real file (not a folder) is selected in an active project.
+  // The feed is shown whenever there's no file, or when the user has
+  // toggled it open over the current one.
+  const hasFile = !!activeProject && !!selectedNode && selectedNode.type !== 'folder'
+  const feedVisible = !!activeProject && (!hasFile || feedOpen)
+
+  // The ribbon is grayed out when there's no file to act on, or while the
+  // feed covers the file. It keeps the selected file's theme in the latter
+  // case; with no file it shows the Word (document) ribbon as a placeholder.
+  const ribbonDisabled = !hasFile || feedOpen
+  const effectiveType = hasFile && RIBBON_THEMES[selectedNode.type] ? selectedNode.type : 'document'
   const theme = RIBBON_THEMES[effectiveType]
 
   return (
@@ -957,20 +1498,11 @@ function Workspace() {
 
         <div className="workspace-ribbon-main" style={{ '--ribbon-accent': theme.accent }}>
           {/* Project + file context lives right in the tab strip row now,
-              alongside Home/Insert/Design/etc — it stays enabled even when
+              alongside Home/Insert/Design/etc. it stays enabled even when
               the tabs/groups below are grayed out, since switching projects
               shouldn't require a file to be selected first. */}
           <div className="workspace-ribbon-tabstrip" role="tablist">
             <div className="workspace-ribbon-context">
-              {createProjectSuccess && (
-                <span
-                  className="workspace-ribbon-context-status workspace-ribbon-context-status--success"
-                  role="status"
-                >
-                  ✓ {createProjectSuccess}
-                </span>
-              )}
-
               {loadingProjects ? (
                 <span className="workspace-ribbon-context-status">Loading projects…</span>
               ) : projectError ? (
@@ -994,7 +1526,7 @@ function Workspace() {
                 </select>
               )}
 
-              {activeProject && selectedNode && selectedNode.type !== 'folder' && (
+              {hasFile && (
                 <>
                   <span className="workspace-ribbon-context-sep">/</span>
                   <span className="workspace-ribbon-context-file">{selectedNode.name}</span>
@@ -1021,6 +1553,38 @@ function Workspace() {
                   {tab}
                 </button>
               ))}
+            </div>
+
+            {/* Save + Feed stay enabled regardless of the grayed-out tabs. */}
+            <div className="workspace-ribbon-actions">
+              <button
+                type="button"
+                className="workspace-ribbon-pill workspace-ribbon-pill--primary"
+                onClick={handleSave}
+                disabled={!(hasFile && selectedNode.dirty)}
+                title={hasFile && selectedNode.dirty ? 'Save changes' : 'No unsaved changes'}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="workspace-ribbon-pill"
+                onClick={openComposer}
+                disabled={!activeProject}
+                title={activeProject ? 'Write a post for your team' : 'Select or create a project first'}
+              >
+                Post
+              </button>
+              <button
+                type="button"
+                className={'workspace-ribbon-pill' + (feedVisible ? ' is-active' : '')}
+                onClick={() => setFeedOpen((open) => !open)}
+                disabled={!hasFile}
+                aria-pressed={feedVisible}
+                title={hasFile ? (feedVisible ? 'Close feed' : 'Open feed') : 'Select a file to close the feed'}
+              >
+                Feed
+              </button>
             </div>
 
             <div className="workspace-ribbon-presence">
@@ -1050,10 +1614,9 @@ function Workspace() {
       </div>
 
       <div className="workspace-body">
-        {/* Floating toggle — anchored to a fixed spot in the top-left
+        {/* Floating toggle anchored to a fixed spot in the top-left
             corner of the body, outside the explorer pane itself, so it
-            never moves: whether the pane is open or fully hidden, the
-            handle to bring it back stays exactly here. */}
+            never moves */}
         <button
           type="button"
           className="workspace-explorer-toggle"
@@ -1088,6 +1651,214 @@ function Workspace() {
 
         <main className="workspace-main">{renderMainScreen()}</main>
       </div>
+
+      {savePromptOpen && (
+        <div className="workspace-modal-overlay" onClick={closeSavePrompt}>
+          <div
+            className="workspace-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="File saved"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="workspace-modal-title">File saved</h2>
+            <p className="workspace-save-prompt-text">
+              Your file has been saved. Do you want to make a post about it?
+            </p>
+            <label className="workspace-save-prompt-skip">
+              <input
+                type="checkbox"
+                checked={savePromptSkip}
+                onChange={(e) => setSavePromptSkip(e.target.checked)}
+              />
+              Don&apos;t ask me again
+            </label>
+            <div className="workspace-modal-actions">
+              <button type="button" className="workspace-modal-cancel" onClick={handleReturnToFile}>
+                Return to File
+              </button>
+              <button type="button" className="workspace-modal-create" onClick={handleMakePost}>
+                Make Post
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {composerOpen && (
+        <div className="workspace-modal-overlay">
+          <div className="workspace-modal workspace-modal--wide" role="dialog" aria-modal="true" aria-label="New post">
+            <h2 className="workspace-modal-title">New Post</h2>
+            <form onSubmit={handlePublishPost}>
+              <div className="workspace-composer-author">
+                {renderAvatar(
+                  auth.currentUser?.displayName || auth.currentUser?.email || 'You',
+                  auth.currentUser?.photoURL || null
+                )}
+                <span className="workspace-feed-user">
+                  {auth.currentUser?.displayName || auth.currentUser?.email || 'You'}
+                </span>
+              </div>
+
+              <div className="workspace-composer-toolbar">
+                <button
+                  type="button"
+                  className={'workspace-composer-tool' + (composerFormats.bold ? ' is-active' : '')}
+                  onMouseDown={(e) => applyComposerFormat(e, 'bold')}
+                  aria-label="Bold"
+                  aria-pressed={composerFormats.bold}
+                  title="Bold (Ctrl+B)"
+                >
+                  <strong>B</strong>
+                </button>
+                <button
+                  type="button"
+                  className={'workspace-composer-tool' + (composerFormats.italic ? ' is-active' : '')}
+                  onMouseDown={(e) => applyComposerFormat(e, 'italic')}
+                  aria-label="Italic"
+                  aria-pressed={composerFormats.italic}
+                  title="Italic (Ctrl+I)"
+                >
+                  <em>I</em>
+                </button>
+                <button
+                  type="button"
+                  className={'workspace-composer-tool' + (composerFormats.underline ? ' is-active' : '')}
+                  onMouseDown={(e) => applyComposerFormat(e, 'underline')}
+                  aria-label="Underline"
+                  aria-pressed={composerFormats.underline}
+                  title="Underline (Ctrl+U)"
+                >
+                  <span style={{ textDecoration: 'underline' }}>U</span>
+                </button>
+
+                <span className="workspace-composer-toolbar-gap" />
+
+                <button
+                  type="button"
+                  className="workspace-composer-tool workspace-composer-tool--text"
+                  onClick={() => composerImageInputRef.current?.click()}
+                  disabled={composerImages.length >= MAX_POST_IMAGES}
+                >
+                  Attach image
+                </button>
+                <button
+                  type="button"
+                  className={
+                    'workspace-composer-tool workspace-composer-tool--text' + (composerPickerOpen ? ' is-active' : '')
+                  }
+                  onClick={() => setComposerPickerOpen((open) => !open)}
+                  aria-expanded={composerPickerOpen}
+                >
+                  Link files{composerFileIds.length > 0 ? ` (${composerFileIds.length})` : ''}
+                </button>
+                <input
+                  ref={composerImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={handleComposerImages}
+                />
+              </div>
+
+              <div className="workspace-composer-editor-wrap">
+                {composerEmpty && (
+                  <span className="workspace-composer-placeholder">What do you want to share with the team?</span>
+                )}
+                <div
+                  ref={composerEditorRef}
+                  className="workspace-composer-editor"
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="Post text"
+                  onInput={handleComposerInput}
+                  onPaste={handleComposerPaste}
+                  onKeyUp={refreshComposerFormats}
+                  onMouseUp={refreshComposerFormats}
+                  onFocus={refreshComposerFormats}
+                />
+              </div>
+
+              {composerImages.length > 0 && (
+                <div className="workspace-composer-images">
+                  {composerImages.map((image) => (
+                    <div key={image.id} className="workspace-composer-image">
+                      <img src={image.url} alt={image.name} />
+                      <button
+                        type="button"
+                        className="workspace-composer-remove"
+                        onClick={() => removeComposerImage(image.id)}
+                        aria-label={`Remove ${image.name}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {composerFileIds.length > 0 && (
+                <div className="workspace-composer-chips">
+                  {composerFileIds.map((id) => {
+                    const file = flattenFiles(tree).find((candidate) => candidate.id === id)
+                    if (!file) return null
+                    return (
+                      <span key={id} className="workspace-composer-chip">
+                        <span className="workspace-tree-icon">{FILE_TYPES[file.type]?.icon ?? ICONS.document}</span>
+                        {file.name}
+                        <button
+                          type="button"
+                          className="workspace-composer-chip-remove"
+                          onClick={() => toggleComposerFile(id)}
+                          aria-label={`Unlink ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+
+              {composerPickerOpen && (
+                <div className="workspace-composer-picker">
+                  {flattenFiles(tree).length === 0 ? (
+                    <p className="workspace-composer-picker-empty">This project has no files yet.</p>
+                  ) : (
+                    flattenFiles(tree).map((file) => (
+                      <label key={file.id} className="workspace-composer-picker-row">
+                        <input
+                          type="checkbox"
+                          checked={composerFileIds.includes(file.id)}
+                          onChange={() => toggleComposerFile(file.id)}
+                        />
+                        <span className="workspace-tree-icon">{FILE_TYPES[file.type]?.icon ?? ICONS.document}</span>
+                        <span className="workspace-composer-picker-name">{file.name}</span>
+                        {file.folder && <span className="workspace-composer-picker-folder">{file.folder}</span>}
+                      </label>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {composerError && (
+                <p className="workspace-modal-error" role="alert">{composerError}</p>
+              )}
+              <div className="workspace-modal-actions">
+                <button type="button" className="workspace-modal-cancel" onClick={closeComposer}>
+                  Cancel
+                </button>
+                <button type="submit" className="workspace-modal-create">
+                  Post
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {newProjectModalOpen && (
         <div className="workspace-modal-overlay" onClick={closeNewProjectModal}>
