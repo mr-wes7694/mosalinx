@@ -1,5 +1,5 @@
 const { findUserByFirebaseUid } = require('../models/userModel');
-const { findProjectMemberRole } = require('../models/projectModel');
+const { checkProjectPermission } = require('../utils/projectPermissions');
 
 const {
     createCalendarEvent,
@@ -129,17 +129,18 @@ const createEvent = async (req, res) => {
             });
         }
 
-        // Verify that the user belongs to the project.
-        const role = await findProjectMemberRole(
-            projectId,
-            user.user_id
-        );
+	// Verify that the user belongs to this project.
+	const permission = await checkProjectPermission(
+	    projectId,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!role) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
         const event = await createCalendarEvent(
             projectId,
@@ -192,17 +193,18 @@ const getEventsByProject = async (req, res) => {
             });
         }
 
-        // Verify that the user belongs to the project.
-        const role = await findProjectMemberRole(
-            projectId,
-            user.user_id
-        );
+	// Verify that the user belongs to this project.
+	const permission = await checkProjectPermission(
+	    projectId,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!role) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
         const events = await findCalendarEventsByProject(
             projectId
@@ -277,25 +279,25 @@ const updateEvent = async (req, res) => {
             });
         }
 
-        // Verify that the user belongs to the event's project.
-        const role = await findProjectMemberRole(
-            event.project_id,
-            user.user_id
-        );
+	// Verify that the user belongs to the event's project.
+	const permission = await checkProjectPermission(
+	    event.project_id,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!role) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
-        // Event creators can update their own events.
-        const isCreator =
-            event.created_by === user.user_id;
+	// Event creators can update their own events.
+	const isCreator =
+	    event.created_by === user.user_id;
 
-        // Project owners can update events created by other members.
-        const isProjectOwner =
-            role.toLowerCase() === 'owner';
+	// Project owners can update events created by other members.
+	const isProjectOwner = permission.role === 'owner';
 
         if (!isCreator && !isProjectOwner) {
             return res.status(403).json({
@@ -366,25 +368,25 @@ const deleteEvent = async (req, res) => {
             });
         }
 
-        // Verify that the user belongs to the event's project.
-        const role = await findProjectMemberRole(
-            event.project_id,
-            user.user_id
-        );
+	// Verify that the user belongs to the event's project.
+	const permission = await checkProjectPermission(
+	    event.project_id,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!role) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
-        // Event creators can delete their own events.
-        const isCreator =
-            event.created_by === user.user_id;
+	// Event creators can delete their own events.
+	const isCreator =
+	    event.created_by === user.user_id;
 
-        // Project owners can delete events created by other members.
-        const isProjectOwner =
-            role.toLowerCase() === 'owner';
+	// Project owners can delete events created by other members.
+	const isProjectOwner = permission.role === 'owner';
 
         if (!isCreator && !isProjectOwner) {
             return res.status(403).json({

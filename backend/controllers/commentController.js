@@ -1,5 +1,5 @@
 const { findUserByFirebaseUid } = require('../models/userModel');
-const { findProjectMemberRole } = require('../models/projectModel');
+const { checkProjectPermission } = require('../utils/projectPermissions');
 const { findWorkspacePostById } = require('../models/workspacePostModel');
 const { createComment } = require('../models/commentModel');
 
@@ -53,17 +53,18 @@ const createPostComment = async (req, res) => {
             });
         }
 
-        // Check that the user belongs to the post's project.
-        const memberRole = await findProjectMemberRole(
-            existingPost.project_id,
-            user.user_id
-        );
+	// Check that the user belongs to the post's project.
+	const permission = await checkProjectPermission(
+	    existingPost.project_id,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!memberRole) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
         const comment = await createComment(
             postId,
