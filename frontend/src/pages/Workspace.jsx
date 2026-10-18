@@ -228,6 +228,7 @@ function plainLines(text) {
 const INITIAL_POSTS = [
   {
     id: 'post-1',
+    projectId: null,
     user: 'Veronica Johnson',
     avatarUrl: null,
     lines: [
@@ -243,6 +244,7 @@ const INITIAL_POSTS = [
   },
   {
     id: 'post-2',
+    projectId: null,
     user: 'Lesly Martinez',
     avatarUrl: null,
     lines: plainLines('Filtered the user report to active accounts only and sorted by most recent login.'),
@@ -252,6 +254,7 @@ const INITIAL_POSTS = [
   },
   {
     id: 'post-3',
+    projectId: null,
     user: 'Veronica Johnson',
     avatarUrl: null,
     lines: plainLines(
@@ -267,9 +270,9 @@ const INITIAL_POSTS = [
 ]
 
 const INITIAL_CHANGES = [
-  { id: 'change-1', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
-  { id: 'change-2', user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
-  { id: 'change-3', user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
+  { id: 'change-1', projectId: null, user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
+  { id: 'change-2', projectId: null, user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
+  { id: 'change-3', projectId: null, user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
 ]
 
 // Turns the composer's contentEditable DOM into plain data: an array of
@@ -322,6 +325,94 @@ function serializeEditor(root) {
   return lines
 }
 
+// The text of a document file as formatted lines. Older/seed files only have
+// plain `content`, so those are converted on the fly.
+function documentLines(node) {
+  return node.lines ?? plainLines(node.content ?? '')
+}
+
+// Rich-text editor for document files. Bold/italic/underline apply to the
+// selected text (or to what you type next), like Word. The browser owns the
+// editable DOM while you type; every change is read back into plain `lines`
+// data (see serializeEditor), so nothing is ever stored or rendered as HTML.
+function DocumentEditor({ lines, align, onChange, onFormatsChange }) {
+  const editorRef = useRef(null)
+  const initialLines = useRef(lines)
+
+  // Build the starting DOM once per file (the editor is keyed by file id).
+  useEffect(() => {
+    const root = editorRef.current
+    if (!root) return
+    root.textContent = ''
+    initialLines.current.forEach((runs) => {
+      const row = document.createElement('div')
+      runs.forEach((run) => {
+        if (!run.text) return
+        let node = document.createTextNode(run.text)
+        if (run.underline) {
+          const wrap = document.createElement('u')
+          wrap.appendChild(node)
+          node = wrap
+        }
+        if (run.italic) {
+          const wrap = document.createElement('em')
+          wrap.appendChild(node)
+          node = wrap
+        }
+        if (run.bold) {
+          const wrap = document.createElement('strong')
+          wrap.appendChild(node)
+          node = wrap
+        }
+        row.appendChild(node)
+      })
+      if (!row.firstChild) row.appendChild(document.createElement('br'))
+      root.appendChild(row)
+    })
+  }, [])
+
+  // Keep the ribbon's B / I / U highlighting in step with the cursor.
+  useEffect(() => {
+    function handleSelectionChange() {
+      const selection = document.getSelection()
+      if (!selection || !editorRef.current?.contains(selection.anchorNode)) return
+      onFormatsChange({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+      })
+    }
+    document.addEventListener('selectionchange', handleSelectionChange)
+    return () => document.removeEventListener('selectionchange', handleSelectionChange)
+  }, [onFormatsChange])
+
+  function handleInput() {
+    onChange(serializeEditor(editorRef.current))
+  }
+
+  // Paste as plain text so outside formatting can't sneak into the file.
+  function handlePaste(event) {
+    event.preventDefault()
+    const text = event.clipboardData.getData('text/plain')
+    document.execCommand('insertText', false, text)
+  }
+
+  return (
+    <div
+      ref={editorRef}
+      className="workspace-doc-editor"
+      style={{ textAlign: align }}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      aria-label="Document text"
+      onInput={handleInput}
+      onPaste={handlePaste}
+    />
+  )
+}
+
 function linesHaveText(lines) {
   return lines.some((runs) => runs.some((run) => run.text.trim()))
 }
@@ -332,18 +423,15 @@ function renderRichLines(lines) {
       {runs.length === 0 ? (
         <br />
       ) : (
-        runs.map((run, runIndex) => (
-          <span
-            key={runIndex}
-            style={{
-              fontWeight: run.bold ? 700 : undefined,
-              fontStyle: run.italic ? 'italic' : undefined,
-              textDecoration: run.underline ? 'underline' : undefined,
-            }}
-          >
-            {run.text}
-          </span>
-        ))
+        runs.map((run, runIndex) => {
+          // Real strong/em/u elements (styled in the CSS) so the formatting
+          // is visible and also meaningful to screen readers.
+          let content = run.text
+          if (run.underline) content = <u>{content}</u>
+          if (run.italic) content = <em>{content}</em>
+          if (run.bold) content = <strong>{content}</strong>
+          return <span key={runIndex}>{content}</span>
+        })
       )}
     </p>
   ))
@@ -380,14 +468,34 @@ function renderAvatar(name, avatarUrl, extraClass = '') {
   )
 }
 
+// Feed timestamps can be missing or invalid (bad data, older entries), so
+// everything that reads them goes through these helpers.
+function toValidDate(timestamp) {
+  if (timestamp === null || timestamp === undefined || timestamp === '') return null
+  const date = new Date(timestamp)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+// Newest first; entries without a usable time go last.
+function sortByNewest(items) {
+  const time = (item) => toValidDate(item.timestamp)?.getTime() ?? -Infinity
+  return [...items].sort((a, b) => time(b) - time(a))
+}
+
 function formatFeedTime(timestamp) {
-  return new Date(timestamp).toLocaleString(undefined, {
+  const date = toValidDate(timestamp)
+  if (!date) return 'Date unavailable'
+  return date.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+function feedTimeAttr(timestamp) {
+  return toValidDate(timestamp)?.toISOString()
 }
 
 // ---------- Tree helpers (immutable) ----------
@@ -533,6 +641,8 @@ function Workspace() {
     }
   })
   const [composerEmpty, setComposerEmpty] = useState(true)
+  // Bold/italic/underline state at the cursor in the open document.
+  const [docFormats, setDocFormats] = useState({ bold: false, italic: false, underline: false })
   const [composerFormats, setComposerFormats] = useState({ bold: false, italic: false, underline: false })
   const [composerImages, setComposerImages] = useState([])
   const [composerFileIds, setComposerFileIds] = useState([])
@@ -657,22 +767,27 @@ function Workspace() {
     setSavePromptOpen(false)
   }
 
+  // "Don't ask me again" counts whichever button is clicked. Switch it back
+  // on from the Settings page.
+  function rememberSavePromptChoice() {
+    if (!savePromptSkip) return
+    setSkipSavePrompt(true)
+    try {
+      localStorage.setItem('mosalinx.skipSavePrompt', '1')
+    } catch {
+      // storage unavailable: the choice just lasts until reload
+    }
+  }
+
   // Return to File: just closes the prompt (the save already happened).
   function handleReturnToFile() {
-    // Switch it back on from the Settings page.
-    if (savePromptSkip) {
-      setSkipSavePrompt(true)
-      try {
-        localStorage.setItem('mosalinx.skipSavePrompt', '1')
-      } catch {
-        // storage unavailable: the choice just lasts until reload
-      }
-    }
+    rememberSavePromptChoice()
     setSavePromptOpen(false)
   }
 
   // Opens the composer with the saved file already linked.
   function handleMakePost() {
+    rememberSavePromptChoice()
     setSavePromptOpen(false)
     openComposer()
     if (savedFileId) setComposerFileIds([savedFileId])
@@ -685,7 +800,7 @@ function Workspace() {
 
     const user = auth.currentUser?.displayName || auth.currentUser?.email || 'You'
     setChanges((prev) => [
-      { id: nextId(), user, fileId: selectedNode.id, fileName: selectedNode.name, timestamp: Date.now() },
+      { id: nextId(), projectId: activeProject?.project_id ?? null, user, fileId: selectedNode.id, fileName: selectedNode.name, timestamp: Date.now() },
       ...prev,
     ])
     setTree((prev) => updateNode(prev, selectedNode.id, (node) => ({ ...node, dirty: false })))
@@ -797,6 +912,7 @@ function Workspace() {
     setPosts((prev) => [
       {
         id: nextId(),
+        projectId: activeProject?.project_id ?? null,
         user: currentUser?.displayName || currentUser?.email || 'You',
         avatarUrl: currentUser?.photoURL || null,
         lines: hasText ? lines : [],
@@ -841,8 +957,17 @@ function Workspace() {
 
   // ---------- Ribbon tool actions ----------
 
-  function toggleDocFormat(key) {
-    updateSelectedFile((node) => ({ [key]: !node[key] }))
+  // Applies to the selected text in the document. onMouseDown + preventDefault
+  // keeps the selection from being lost when the ribbon button is clicked.
+  function applyDocFormat(event, command) {
+    event.preventDefault()
+    document.execCommand(command)
+    setDocFormats((prev) => ({ ...prev, [command]: document.queryCommandState(command) }))
+  }
+
+  function setDocumentLines(lines) {
+    const content = lines.map((runs) => runs.map((run) => run.text).join('')).join('\n')
+    updateSelectedFile(() => ({ lines, content }))
   }
 
   function setDocAlign(align) {
@@ -1023,13 +1148,31 @@ function Workspace() {
                 <option>14</option>
                 <option>18</option>
               </select>
-              <RibbonButton active={node.bold} onClick={() => toggleDocFormat('bold')}>
+              <RibbonButton
+                active={docFormats.bold}
+                onMouseDown={(e) => applyDocFormat(e, 'bold')}
+                aria-label="Bold"
+                aria-pressed={docFormats.bold}
+                title="Bold (Ctrl+B)"
+              >
                 <strong>B</strong>
               </RibbonButton>
-              <RibbonButton active={node.italic} onClick={() => toggleDocFormat('italic')}>
+              <RibbonButton
+                active={docFormats.italic}
+                onMouseDown={(e) => applyDocFormat(e, 'italic')}
+                aria-label="Italic"
+                aria-pressed={docFormats.italic}
+                title="Italic (Ctrl+I)"
+              >
                 <em>I</em>
               </RibbonButton>
-              <RibbonButton active={node.underline} onClick={() => toggleDocFormat('underline')}>
+              <RibbonButton
+                active={docFormats.underline}
+                onMouseDown={(e) => applyDocFormat(e, 'underline')}
+                aria-label="Underline"
+                aria-pressed={docFormats.underline}
+                title="Underline (Ctrl+U)"
+              >
                 <span style={{ textDecoration: 'underline' }}>U</span>
               </RibbonButton>
             </RibbonGroup>
@@ -1205,15 +1348,24 @@ function Workspace() {
   }
 
   function renderFeed() {
+    // Only this project's entries (the sample entries have no project, so
+    // they show everywhere until real data exists).
+    const inProject = (item) => !item.projectId || item.projectId === activeProject?.project_id
+    const projectPosts = sortByNewest(posts.filter(inProject))
+    const projectChanges = sortByNewest(changes.filter(inProject))
+
     return (
       <div className="workspace-feed">
         <div className="workspace-feed-header">
           <h2 className="workspace-feed-title">Project Feed</h2>
           <div className="workspace-feed-header-actions">
-            <div className="workspace-feed-tabs" role="tablist">
+            <div className="workspace-feed-tabs" role="tablist" aria-label="Feed views" onKeyDown={handleFeedTabKeys}>
               <button
                 type="button"
                 role="tab"
+                id="feed-tab-posts"
+                aria-controls="feed-panel"
+                tabIndex={feedView === 'posts' ? 0 : -1}
                 aria-selected={feedView === 'posts'}
                 className={'workspace-feed-tab' + (feedView === 'posts' ? ' is-active' : '')}
                 onClick={() => setFeedView('posts')}
@@ -1223,6 +1375,9 @@ function Workspace() {
               <button
                 type="button"
                 role="tab"
+                id="feed-tab-changes"
+                aria-controls="feed-panel"
+                tabIndex={feedView === 'changes' ? 0 : -1}
                 aria-selected={feedView === 'changes'}
                 className={'workspace-feed-tab' + (feedView === 'changes' ? ' is-active' : '')}
                 onClick={() => setFeedView('changes')}
@@ -1236,18 +1391,19 @@ function Workspace() {
           </div>
         </div>
 
+        <div id="feed-panel" role="tabpanel" aria-labelledby={'feed-tab-' + feedView}>
         {feedView === 'posts' ? (
-          posts.length === 0 ? (
+          projectPosts.length === 0 ? (
             <p className="workspace-feed-empty">No posts yet. Click New Post to share an update with your team.</p>
           ) : (
             <div className="workspace-feed-posts">
-              {posts.map((post) => (
+              {projectPosts.map((post) => (
                 <article key={post.id} className="workspace-feed-post">
                   <header className="workspace-feed-post-head">
                     {renderAvatar(post.user, post.avatarUrl)}
                     <div className="workspace-feed-post-meta">
                       <span className="workspace-feed-user">{post.user}</span>
-                      <time className="workspace-feed-post-time" dateTime={new Date(post.timestamp).toISOString()}>
+                      <time className="workspace-feed-post-time" dateTime={feedTimeAttr(post.timestamp)}>
                         {formatFeedTime(post.timestamp)}
                       </time>
                     </div>
@@ -1281,23 +1437,35 @@ function Workspace() {
               ))}
             </div>
           )
-        ) : changes.length === 0 ? (
+        ) : projectChanges.length === 0 ? (
           <p className="workspace-feed-empty">No saved changes yet. Edit a file and click Save.</p>
         ) : (
           <ul className="workspace-feed-changes">
-            {changes.map((change) => (
+            {projectChanges.map((change) => (
               <li key={change.id} className="workspace-feed-change">
                 <span className="workspace-feed-change-file">
                   {renderFeedFileLink(change.fileId, change.fileName)}
                 </span>
                 <span className="workspace-feed-change-user">{change.user}</span>
-                <span className="workspace-feed-change-time">{formatFeedTime(change.timestamp)}</span>
+                <time className="workspace-feed-change-time" dateTime={feedTimeAttr(change.timestamp)}>
+                  {formatFeedTime(change.timestamp)}
+                </time>
               </li>
             ))}
           </ul>
         )}
+        </div>
       </div>
     )
+  }
+
+  // Left/Right arrows move between the feed tabs.
+  function handleFeedTabKeys(event) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const next = feedView === 'posts' ? 'changes' : 'posts'
+    setFeedView(next)
+    document.getElementById('feed-tab-' + next)?.focus()
   }
 
   function renderMainScreen() {
@@ -1319,17 +1487,12 @@ function Workspace() {
       case 'document':
         return (
           <div className="workspace-doc-page">
-            <textarea
-              className="workspace-doc-textarea"
-              style={{
-                fontWeight: selectedNode.bold ? 700 : 400,
-                fontStyle: selectedNode.italic ? 'italic' : 'normal',
-                textDecoration: selectedNode.underline ? 'underline' : 'none',
-                textAlign: selectedNode.align,
-              }}
-              value={selectedNode.content}
-              placeholder="Start typing…"
-              onChange={(e) => updateSelectedFile(() => ({ content: e.target.value }))}
+            <DocumentEditor
+              key={selectedNode.id}
+              lines={documentLines(selectedNode)}
+              align={selectedNode.align}
+              onChange={setDocumentLines}
+              onFormatsChange={setDocFormats}
             />
           </div>
         )
@@ -1658,10 +1821,11 @@ function Workspace() {
             className="workspace-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="File saved"
+            aria-labelledby="save-prompt-title"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === 'Escape') closeSavePrompt() }}
           >
-            <h2 className="workspace-modal-title">File saved</h2>
+            <h2 id="save-prompt-title" className="workspace-modal-title">File saved</h2>
             <p className="workspace-save-prompt-text">
               Your file has been saved. Do you want to make a post about it?
             </p>
@@ -1687,8 +1851,8 @@ function Workspace() {
 
       {composerOpen && (
         <div className="workspace-modal-overlay">
-          <div className="workspace-modal workspace-modal--wide" role="dialog" aria-modal="true" aria-label="New post">
-            <h2 className="workspace-modal-title">New Post</h2>
+          <div className="workspace-modal workspace-modal--wide" role="dialog" aria-modal="true" aria-labelledby="composer-title" onKeyDown={(e) => { if (e.key === 'Escape') closeComposer() }}>
+            <h2 id="composer-title" className="workspace-modal-title">New Post</h2>
             <form onSubmit={handlePublishPost}>
               <div className="workspace-composer-author">
                 {renderAvatar(

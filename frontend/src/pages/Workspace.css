@@ -1528,3 +1528,85 @@ button.workspace-feed-file:hover {
   line-height: 1.45;
   color: #4a4d52;
 }
+
+/* Post text formatting: spelled out so bold/italic/underline always read as
+   different from normal text, whatever the page font or resets do. */
+.workspace-post-body strong,
+.workspace-composer-editor b,
+.workspace-composer-editor strong {
+  font-weight: 700;
+}
+
+.workspace-post-body em,
+.workspace-composer-editor i,
+.workspace-composer-editor em {
+  font-style: italic;
+}
+
+.workspace-post-body u,
+.workspace-composer-editor u {
+  text-decoration: underline;
+}
+
+.workspace-feed-tab:focus-visible,
+.workspace-feed-new-post:focus-visible,
+.workspace-feed-file:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 2px;
+}
+
+/* ---------- Document editor (rich text) ---------- */
+
+.workspace-doc-editor {
+  width: 100%;
+  min-height: 500px;
+  outline: none;
+  background: transparent;
+  color: #1a1b1e;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-doc-editor b,
+.workspace-doc-editor strong {
+  font-weight: 700;
+}
+
+.workspace-doc-editor i,
+.workspace-doc-editor em {
+  font-style: italic;
+}
+
+.workspace-doc-editor u {
+  text-decoration: underline;
+}
+
+/* Bold/italic need a font that actually has those faces (or permission to
+   fake them). A webfont loaded with only a regular weight, or
+   font-synthesis turned off globally, makes them look identical to normal
+   text, so these three editors set a system font stack explicitly. */
+.workspace-doc-editor,
+.workspace-composer-editor,
+.workspace-post-body {
+  font-family: 'Segoe UI', Calibri, Arial, Helvetica, sans-serif;
+  font-synthesis: weight style;
+}
+
+.workspace-doc-editor b,
+.workspace-doc-editor strong,
+.workspace-composer-editor b,
+.workspace-composer-editor strong,
+.workspace-post-body strong {
+  font-weight: 700 !important;
+}
+
+.workspace-doc-editor i,
+.workspace-doc-editor em,
+.workspace-composer-editor i,
+.workspace-composer-editor em,
+.workspace-post-body em {
+  font-style: italic !important;
+}
