@@ -211,8 +211,19 @@ const INITIAL_TREE = [
 //   temporary in-browser object URL), and avatarUrl should come from the
 //   user's profile_image_url.
 //
-// - changes: one entry per Save click — { id, user, fileId, fileName,
-//   timestamp }. Saving no longer asks for a comment or creates a post.
+// - changes (shown on the Activity tab): one entry per file action —
+//   { id, projectId, user, action, fileId, fileName, timestamp } where action
+//   is 'created', 'modified' or 'deleted' (see ACTIVITY_LABELS). Saving no
+//   longer asks for a comment or creates a post.
+
+// Words shown on the Activity tab. Entries with no action are old saves, so
+// they read as Modified; an action we don't know reads as a neutral Updated.
+const ACTIVITY_LABELS = { created: 'Created', modified: 'Modified', deleted: 'Deleted' }
+
+function activityLabel(action) {
+  if (!action) return ACTIVITY_LABELS.modified
+  return ACTIVITY_LABELS[action] ?? 'Updated'
+}
 
 const NOW = Date.now()
 const MINUTE = 60 * 1000
@@ -270,9 +281,9 @@ const INITIAL_POSTS = [
 ]
 
 const INITIAL_CHANGES = [
-  { id: 'change-1', projectId: null, user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
-  { id: 'change-2', projectId: null, user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
-  { id: 'change-3', projectId: null, user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
+  { id: 'change-1', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
+  { id: 'change-2', projectId: null, action: 'modified', user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
+  { id: 'change-3', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
 ]
 
 // Turns the composer's contentEditable DOM into plain data: an array of
@@ -286,7 +297,7 @@ function serializeEditor(root) {
 
   function walk(node, style) {
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent.replace(/ /g, ' ')
+      const text = node.textContent.replace(/\u00A0/g, ' ')
       if (text) currentLine().push({ text, ...style })
       return
     }
@@ -794,13 +805,13 @@ function Workspace() {
   }
 
   // The save itself: the file's unsaved flag is cleared and an entry
-  // (file, user, time) goes into the Changes view.
+  // (file, user, time) goes into the Activity view.
   function commitSave() {
     if (!selectedNode?.dirty) return
 
     const user = auth.currentUser?.displayName || auth.currentUser?.email || 'You'
     setChanges((prev) => [
-      { id: nextId(), projectId: activeProject?.project_id ?? null, user, fileId: selectedNode.id, fileName: selectedNode.name, timestamp: Date.now() },
+      { id: nextId(), projectId: activeProject?.project_id ?? null, action: 'modified', user, fileId: selectedNode.id, fileName: selectedNode.name, timestamp: Date.now() },
       ...prev,
     ])
     setTree((prev) => updateNode(prev, selectedNode.id, (node) => ({ ...node, dirty: false })))
@@ -945,6 +956,18 @@ function Workspace() {
     }
 
     setTree((prev) => insertNode(prev, targetFolder, newNode))
+    setChanges((prev) => [
+      {
+        id: nextId(),
+        projectId: activeProject?.project_id ?? null,
+        action: 'created',
+        user: auth.currentUser?.displayName || auth.currentUser?.email || 'You',
+        fileId: newNode.id,
+        fileName: newNode.name,
+        timestamp: Date.now(),
+      },
+      ...prev,
+    ])
     if (targetFolder !== 'ROOT') {
       setExpandedFolders((prev) => new Set(prev).add(targetFolder))
     }
@@ -1375,14 +1398,14 @@ function Workspace() {
               <button
                 type="button"
                 role="tab"
-                id="feed-tab-changes"
+                id="feed-tab-activity"
                 aria-controls="feed-panel"
-                tabIndex={feedView === 'changes' ? 0 : -1}
-                aria-selected={feedView === 'changes'}
-                className={'workspace-feed-tab' + (feedView === 'changes' ? ' is-active' : '')}
-                onClick={() => setFeedView('changes')}
+                tabIndex={feedView === 'activity' ? 0 : -1}
+                aria-selected={feedView === 'activity'}
+                className={'workspace-feed-tab' + (feedView === 'activity' ? ' is-active' : '')}
+                onClick={() => setFeedView('activity')}
               >
-                Changes
+                Activity
               </button>
             </div>
             <button type="button" className="workspace-feed-new-post" onClick={openComposer}>
@@ -1438,15 +1461,25 @@ function Workspace() {
             </div>
           )
         ) : projectChanges.length === 0 ? (
-          <p className="workspace-feed-empty">No saved changes yet. Edit a file and click Save.</p>
+          <p className="workspace-feed-empty">No activity yet. Create or save a file to see it here.</p>
         ) : (
           <ul className="workspace-feed-changes">
             {projectChanges.map((change) => (
               <li key={change.id} className="workspace-feed-change">
-                <span className="workspace-feed-change-file">
-                  {renderFeedFileLink(change.fileId, change.fileName)}
+                <span className="workspace-feed-change-text">
+                  <span className="workspace-feed-change-user">{change.user || 'Someone'}</span>
+                  <span
+                    className={
+                      'workspace-feed-change-action workspace-feed-change-action--' +
+                      (ACTIVITY_LABELS[change.action] ? change.action : 'modified')
+                    }
+                  >
+                    {activityLabel(change.action)}
+                  </span>
+                  <span className="workspace-feed-change-file">
+                    {renderFeedFileLink(change.fileId, change.fileName || 'Untitled file')}
+                  </span>
                 </span>
-                <span className="workspace-feed-change-user">{change.user}</span>
                 <time className="workspace-feed-change-time" dateTime={feedTimeAttr(change.timestamp)}>
                   {formatFeedTime(change.timestamp)}
                 </time>
@@ -1463,7 +1496,7 @@ function Workspace() {
   function handleFeedTabKeys(event) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
-    const next = feedView === 'posts' ? 'changes' : 'posts'
+    const next = feedView === 'posts' ? 'activity' : 'posts'
     setFeedView(next)
     document.getElementById('feed-tab-' + next)?.focus()
   }

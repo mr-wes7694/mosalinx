@@ -1147,7 +1147,7 @@ button.workspace-feed-file:hover {
 
 .workspace-feed-change {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
@@ -1156,6 +1156,34 @@ button.workspace-feed-file:hover {
 
 .workspace-feed-change + .workspace-feed-change {
   border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.workspace-feed-change-text {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+/* Small badge naming the action: Created / Modified / Deleted. */
+.workspace-feed-change-action {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(20, 187, 196, 0.14);
+  color: #0c6f75;
+}
+
+.workspace-feed-change-action--created {
+  background: rgba(46, 160, 67, 0.14);
+  color: #1f7a33;
+}
+
+.workspace-feed-change-action--deleted {
+  background: rgba(192, 57, 43, 0.12);
+  color: #a12622;
 }
 
 .workspace-feed-change-file {

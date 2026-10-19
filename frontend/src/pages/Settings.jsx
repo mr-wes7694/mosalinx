@@ -425,10 +425,15 @@ function Settings() {
 
       const { askToPostAfterSave, ...serverSettings } = draftSettings
 
-      const updatedSettings = withLocalPrefs(
-        await updateUserSettings(currentUser, serverSettings)
-      )
+      // Local preference first, so it sticks even if the server save fails.
       saveLocalPrefs(askToPostAfterSave)
+
+      // Use the value just saved rather than re-reading storage, so the
+      // checkbox shows the new state straight away.
+      const updatedSettings = {
+        ...(await updateUserSettings(currentUser, serverSettings)),
+        askToPostAfterSave,
+      }
 
       setSavedSettings(updatedSettings)
       setDraftSettings(updatedSettings)
