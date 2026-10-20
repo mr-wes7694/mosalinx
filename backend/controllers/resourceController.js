@@ -12,6 +12,7 @@ const {
 
 const { findUserByFirebaseUid } = require('../models/userModel');
 const { findProjectMemberRole } = require('../models/projectModel');
+const { createActivityLog } = require('../models/activityLogModel');
 
 const { storageBucket } = require('../config/firebaseAdmin');
 
@@ -113,6 +114,14 @@ const uploadResource = async (req, res) => {
         );
 
         resource.storagePath = firebaseStoragePath;
+
+        // Record the upload only after the file and database record are saved.
+        await createActivityLog(
+            projectId,
+            user.user_id,
+            'resource_uploaded',
+            `Resource "${file.originalname}" was uploaded.`
+        );
 
         return res.status(201).json({
             message: 'Resource uploaded successfully.',

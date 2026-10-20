@@ -1,31 +1,65 @@
 const pool = require('../config/database');
+const { createActivityLog } = require('./activityLogModel');
 
-// Create a new workspace post.
+// Create a workspace post and its activity record together.
 const createWorkspacePost = async (
     projectId,
     createdBy,
     postTitle,
     postContent
 ) => {
-    const [result] = await pool.query(
-        `INSERT INTO workspace_posts
-        (project_id, created_by, post_title, post_content)
-        VALUES (?, ?, ?, ?)`,
-        [
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const [result] = await connection.query(
+            `INSERT INTO workspace_posts
+            (project_id, created_by, post_title, post_content)
+            VALUES (?, ?, ?, ?)`,
+            [
+                projectId,
+                createdBy,
+                postTitle,
+                postContent,
+            ]
+        );
+
+        // Record the post creation in the same transaction.
+        await createActivityLog(
+            projectId,
+            createdBy,
+            'workspace_post_created',
+            postTitle
+                ? `Workspace post "${postTitle}" was created.`
+                : 'A workspace post was created.',
+            connection
+        );
+
+        await connection.commit();
+
+        return {
+            postId: result.insertId,
             projectId,
             createdBy,
             postTitle,
             postContent,
-        ]
-    );
+        };
+    } catch (error) {
+        // Keep the post and activity log consistent.
+        try {
+            await connection.rollback();
+        } catch (rollbackError) {
+            console.error(
+                'Failed to roll back workspace post creation:',
+                rollbackError
+            );
+        }
 
-    return {
-        postId: result.insertId,
-        projectId,
-        createdBy,
-        postTitle,
-        postContent,
-    };
+        throw error;
+    } finally {
+        connection.release();
+    }
 };
 
 // Find a workspace post by ID.

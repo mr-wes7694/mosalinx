@@ -1,5 +1,5 @@
-
 const pool = require('../config/database');
+const { createActivityLog } = require('./activityLogModel');
 
 // Roles currently supported by Mosalinx projects.
 const SUPPORTED_PROJECT_ROLES = [
@@ -112,7 +112,7 @@ const updateProjectMemberRole = async (projectId, userId, role) => {
     return findProjectMemberRole(projectId, userId);
 };
 
-// Create a project and add the creator as the project owner.
+// Create a project, add its owner, and record the activity atomically.
 const createProjectWithOwner = async (
     projectName,
     description,
@@ -138,6 +138,15 @@ const createProjectWithOwner = async (
             [projectId, userId, 'owner']
         );
 
+        // Record project creation in the same transaction.
+        await createActivityLog(
+            projectId,
+            userId,
+            'project_created',
+            `Project "${projectName}" was created.`,
+            connection
+        );
+
         await connection.commit();
 
         return {
@@ -148,7 +157,16 @@ const createProjectWithOwner = async (
             role: 'owner',
         };
     } catch (error) {
-        await connection.rollback();
+        // Roll back the project, owner membership, and activity together.
+        try {
+            await connection.rollback();
+        } catch (rollbackError) {
+            console.error(
+                'Failed to roll back project creation:',
+                rollbackError
+            );
+        }
+
         throw error;
     } finally {
         connection.release();
