@@ -13,6 +13,7 @@ const {
 const { findUserByFirebaseUid } = require('../models/userModel');
 const { findProjectMemberRole } = require('../models/projectModel');
 const { createActivityLog } = require('../models/activityLogModel');
+const { checkProjectPermission } = require('../utils/projectPermissions');
 
 const { storageBucket } = require('../config/firebaseAdmin');
 
@@ -502,23 +503,24 @@ const deleteResource = async (req, res) => {
             });
         }
 
-        // Find the user's role within the resource's project.
-        const role = await findProjectMemberRole(
-            resource.project_id,
-            user.user_id
-        );
+	// Check the user's current role in this resource's project.
+	const permission = await checkProjectPermission(
+	    resource.project_id,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!role) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
-        // The resource uploader can delete their own resource.
-        const isUploader = resource.uploaded_by === user.user_id;
+	// The uploader can delete their own resource.
+	const isUploader = resource.uploaded_by === user.user_id;
 
-        // Project owners can delete resources uploaded by other members.
-        const isProjectOwner = role.toLowerCase() === 'owner';
+	// Owners can delete resources uploaded by other members.
+	const isProjectOwner = permission.role === 'owner';
 
         if (!isUploader && !isProjectOwner) {
             return res.status(403).json({
@@ -604,20 +606,21 @@ const updateResourceMetadata = async (req, res) => {
             });
         }
 
-        // Verify project membership and editing permissions.
-        const role = await findProjectMemberRole(
-            resource.project_id,
-            user.user_id
-        );
+	// Verify project membership and editing permissions.
+	const permission = await checkProjectPermission(
+	    resource.project_id,
+	    user.user_id,
+	    ['owner', 'collaborator']
+	);
 
-        if (!role) {
-            return res.status(403).json({
-                message: 'You are not a member of this project.',
-            });
-        }
+	if (!permission.allowed) {
+	    return res.status(403).json({
+	        message: 'You are not a member of this project.',
+	    });
+	}
 
-        const isUploader = resource.uploaded_by === user.user_id;
-        const isProjectOwner = role.toLowerCase() === 'owner';
+	const isUploader = resource.uploaded_by === user.user_id;
+	const isProjectOwner = permission.role === 'owner';
 
         if (!isUploader && !isProjectOwner) {
             return res.status(403).json({
