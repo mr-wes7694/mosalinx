@@ -329,7 +329,7 @@
 
 .calendar-week-events {
   position: absolute;
-  top: 26px;
+  top: 32px;
   left: 0;
   right: 0;
   bottom: 4px;
@@ -364,12 +364,6 @@
   color: #1a1b1e;
 }
 
-.calendar-event-bar--backend {
-  cursor: default;
-  background: #e4eef0;
-  color: #1a1b1e;
-}
-
 .calendar-event-bar--more {
   cursor: default;
   background: transparent;
@@ -379,9 +373,8 @@
   padding-left: 6px;
 }
 
-/* Only local events render as <button> (backend/"+N more" render as <span>),
-   so this scoping naturally limits the hover treatment to bars that are
-   actually clickable. */
+/* Apply hover feedback to clickable event buttons without affecting
+   the non-interactive "+N more" indicators. */
 button.calendar-event-bar:hover {
   filter: brightness(1.15);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
@@ -598,11 +591,6 @@ button.calendar-event-bar:focus-visible {
   font-weight: 600;
 }
 
-.calendar-sidepanel-item-location {
-  font-size: 0.8rem;
-  color: #6b6e73;
-}
-
 .calendar-sidepanel-item-description {
   font-size: 0.8rem;
   color: #4a4d52;
@@ -746,40 +734,6 @@ button.calendar-event-bar:focus-visible {
 
 .calendar-form-input--time {
   max-width: 120px;
-}
-
-.calendar-location-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.calendar-location-pill {
-  flex: 1 1 calc(50% - 3px);
-  padding: 7px 8px;
-  border-radius: 7px;
-  border: 1px solid #ccc;
-  background: #ffffff;
-  color: #1a1b1e;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.calendar-location-pill:hover {
-  background: #f2f2f2;
-}
-
-.calendar-location-pill.is-active {
-  background: #14bbc4;
-  border-color: #14bbc4;
-  color: #000000;
-}
-
-.calendar-location-detail {
-  margin-top: 2px;
 }
 
 .calendar-char-count {

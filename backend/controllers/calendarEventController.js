@@ -9,6 +9,16 @@ const {
     deleteCalendarEvent,
 } = require('../models/calendarEventModel');
 
+// Supported calendar event categories.
+const EVENT_TYPES = [
+    'Meeting',
+    'Appointment',
+    'PTO',
+    'Absence (Non-PTO)',
+    'Travel',
+    'Other',
+];
+
 // Check that an ID is a positive whole number.
 const isValidId = (value) => {
     return /^[1-9]\d*$/.test(String(value));
@@ -35,6 +45,7 @@ const isValidDate = (value) => {
 // Validate calendar event fields.
 const validateEventFields = (
     eventTitle,
+    eventType,
     eventDescription,
     startDatetime,
     endDatetime
@@ -48,6 +59,10 @@ const validateEventFields = (
 
     if (eventTitle.trim().length > 255) {
         return 'Event title must be 255 characters or fewer.';
+    }
+
+    if (!EVENT_TYPES.includes(eventType)) {
+        return 'Event type must be a supported category.';
     }
 
     if (
@@ -94,6 +109,7 @@ const createEvent = async (req, res) => {
     const {
         projectId,
         eventTitle,
+        eventType = 'Other',
         eventDescription,
         startDatetime,
         endDatetime,
@@ -107,6 +123,7 @@ const createEvent = async (req, res) => {
 
     const validationError = validateEventFields(
         eventTitle,
+        eventType,
         eventDescription,
         startDatetime,
         endDatetime
@@ -146,6 +163,7 @@ const createEvent = async (req, res) => {
             projectId,
             user.user_id,
             eventTitle.trim(),
+            eventType,
             typeof eventDescription === 'string'
                 ? eventDescription.trim()
                 : null,
@@ -241,6 +259,7 @@ const updateEvent = async (req, res) => {
 
     const {
         eventTitle,
+        eventType = 'Other',
         eventDescription,
         startDatetime,
         endDatetime,
@@ -248,6 +267,7 @@ const updateEvent = async (req, res) => {
 
     const validationError = validateEventFields(
         eventTitle,
+        eventType,
         eventDescription,
         startDatetime,
         endDatetime
@@ -309,6 +329,7 @@ const updateEvent = async (req, res) => {
         await updateCalendarEvent(
             eventId,
             eventTitle.trim(),
+            eventType,
             typeof eventDescription === 'string'
                 ? eventDescription.trim()
                 : null,

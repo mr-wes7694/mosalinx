@@ -182,6 +182,7 @@ CREATE TABLE calendar_events (
     project_id BIGINT UNSIGNED NOT NULL,
     created_by BIGINT UNSIGNED NOT NULL,
     event_title VARCHAR(255) NOT NULL,
+    event_type VARCHAR(50) NOT NULL DEFAULT 'Other',
     event_description TEXT,
     start_datetime DATETIME NOT NULL,
     end_datetime DATETIME,
