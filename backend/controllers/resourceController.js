@@ -309,6 +309,13 @@ const getResourceById = async (req, res) => {
             });
         }
 
+	// Workspace files must be managed through the Workspace file API.
+	if (resource.resource_type?.startsWith('workspace_')) {
+	    return res.status(404).json({
+	        message: 'Resource not found.',
+	    });
+	}
+
         // Find the MySQL user connected to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
