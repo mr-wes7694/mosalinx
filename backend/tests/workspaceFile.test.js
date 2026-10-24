@@ -9,6 +9,38 @@ const calls = {
     createFile: 0,
 };
 
+// Keep the mocked database record and Storage content between calls.
+const workspaceFile = {
+    resource_id: 101,
+    project_id: 1,
+    uploaded_by: 8,
+    resource_name: 'Meeting Notes',
+    resource_type: 'workspace_document',
+    file_size: 25,
+    category: 'Documents',
+    storage_path: 'projects/1/workspace/101_Meeting_Notes.json',
+};
+
+const storageObjects = new Map();
+const originalStoragePath = workspaceFile.storage_path;
+let failWorkspaceUpdate = false;
+let throwWorkspaceUpdate = false;
+
+const resetWorkspaceMock = () => {
+    throwWorkspaceUpdate = false;
+    Object.assign(workspaceFile, {
+        resource_name: 'Meeting Notes',
+        file_size: 25,
+        category: 'Documents',
+    });
+
+    storageObjects.set(originalStoragePath, {
+        text: 'saved content',
+    });
+
+    failWorkspaceUpdate = false;
+};
+
 // Mock the resource model.
 const resourceModelPath = require.resolve('../models/resourceModel');
 
@@ -31,24 +63,36 @@ require.cache[resourceModelPath] = {
             };
         },
         updateResourceStoragePath: async () => {},
-        findWorkspaceFileById: async (resourceId) => {
+findWorkspaceFileById: async (resourceId) => {
     if (String(resourceId) !== '101') {
         return null;
     }
 
-    return {
-        resource_id: 101,
-        project_id: 1,
-        uploaded_by: 8,
-        resource_name: 'Meeting Notes',
-        resource_type: 'workspace_document',
-        file_size: 25,
-        category: 'Documents',
-        storage_path: 'projects/1/workspace/101_Meeting_Notes.json',
-    };
+    return { ...workspaceFile };
 },
         findWorkspaceFilesByProject: async () => [],
-        updateWorkspaceFile: async () => true,
+updateWorkspaceFile: async (
+    resourceId,
+    resourceName,
+    fileSize,
+    category
+) => {
+    if (throwWorkspaceUpdate) {
+        throw new Error('Simulated database update failure.');
+    }
+
+    if (failWorkspaceUpdate) {
+        return false;
+    }
+
+    Object.assign(workspaceFile, {
+        resource_name: resourceName,
+        file_size: fileSize,
+        category,
+    });
+
+    return true;
+},
         deleteResourceById: async () => {},
         isProjectMember: async (...args) => {
             calls.isProjectMember++;
@@ -114,14 +158,32 @@ require.cache[firebaseAdminPath] = {
     loaded: true,
     exports: {
         storageBucket: {
-            file: () => ({
-                save: async () => {},
-                exists: async () => [true],
-                download: async () => [
-                    Buffer.from(JSON.stringify({ text: 'saved content' })),
-                ],
-                delete: async () => {},
-            }),
+file: (storagePath) => ({
+    save: async (buffer) => {
+        storageObjects.set(
+            storagePath,
+            JSON.parse(buffer.toString('utf8'))
+        );
+    },
+
+    exists: async () => [
+        storageObjects.has(storagePath)
+            || storagePath === originalStoragePath,
+    ],
+
+    download: async () => [
+        Buffer.from(
+            JSON.stringify(
+                storageObjects.get(storagePath)
+                ?? { text: 'saved content' }
+            )
+        ),
+    ],
+
+    delete: async () => {
+        storageObjects.delete(storagePath);
+    },
+}),
         },
     },
 };
@@ -370,6 +432,7 @@ test('returns an empty list when a member has no Workspace files', async () => {
 });
 
 test('retrieves saved Workspace content for a project member', async () => {
+    resetWorkspaceMock();
     const req = makeRequest({}, { resourceId: '101' }, 'firebase-uploader');
     const res = makeResponse();
 
@@ -385,10 +448,14 @@ test('retrieves saved Workspace content for a project member', async () => {
 });
 
 test('allows the original uploader to update a Workspace file', async () => {
+    resetWorkspaceMock();
+
+    const updatedContent = { text: 'Updated sprint notes' };
+
     const req = makeRequest({
         name: 'Updated Notes',
-        content: { text: 'Updated sprint notes' },
-    }, { resourceId: '101' });
+        content: updatedContent,
+    }, { resourceId: '101' }, 'firebase-uploader');
 
     const res = makeResponse();
 
@@ -399,10 +466,15 @@ test('allows the original uploader to update a Workspace file', async () => {
         res.body.message,
         'Workspace file updated successfully.'
     );
-    assert.equal(res.body.file.resource_name, 'Meeting Notes');
+    assert.equal(res.body.file.resource_name, 'Updated Notes');
+    assert.equal(
+        res.body.file.file_size,
+        Buffer.byteLength(JSON.stringify(updatedContent), 'utf8')
+    );
+    assert.deepEqual(res.body.file.content, updatedContent);
     assert.deepEqual(
-        res.body.file.content,
-        { text: 'Updated sprint notes' }
+        storageObjects.get(originalStoragePath),
+        updatedContent
     );
 });
 
@@ -438,4 +510,55 @@ test('allows a project owner to edit a Workspace file uploaded by another member
         res.body.message,
         'Workspace file updated successfully.'
     );
+});
+
+test('restores original Workspace content when metadata update fails', async () => {
+    resetWorkspaceMock();
+    failWorkspaceUpdate = true;
+
+    const req = makeRequest({
+        name: 'Updated Notes',
+        content: { text: 'Updated sprint notes' },
+    }, { resourceId: '101' }, 'firebase-uploader');
+
+    const res = makeResponse();
+
+    await controller.updateWorkspaceFileRecord(req, res);
+
+    assert.equal(res.statusCode, 404);
+
+    // The database update failed, so the original content must be restored.
+    assert.deepEqual(
+        storageObjects.get(originalStoragePath),
+        { text: 'saved content' }
+    );
+
+    // The failed update must not change the existing metadata.
+    assert.equal(workspaceFile.resource_name, 'Meeting Notes');
+});
+
+test('restores original Workspace content when metadata update throws', async () => {
+    resetWorkspaceMock();
+    throwWorkspaceUpdate = true;
+
+    const req = makeRequest({
+        name: 'Updated Notes',
+        content: { text: 'Updated sprint notes' },
+    }, { resourceId: '101' }, 'firebase-uploader');
+
+    const res = makeResponse();
+
+    await controller.updateWorkspaceFileRecord(req, res);
+
+    assert.equal(res.statusCode, 500);
+
+    // The original content must be restored after the database error.
+    assert.deepEqual(
+        storageObjects.get(originalStoragePath),
+        { text: 'saved content' }
+    );
+
+    // The failed update must not change the existing metadata.
+    assert.equal(workspaceFile.resource_name, 'Meeting Notes');
+    assert.equal(workspaceFile.file_size, 25);
 });

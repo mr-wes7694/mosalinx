@@ -335,8 +335,11 @@ const updateWorkspaceFileRecord = async (req, res) => {
         const updatedCategory = category === undefined ? file.category : category;
 
         let updatedContent;
+        let previousContent;
 
         if (content !== undefined) {
+            // Keep the existing content in case the metadata update fails.
+            previousContent = await readJsonContent(file.storage_path);
             updatedContent = content;
 
             // Keep the original path stable so updates replace the same object.
@@ -350,14 +353,59 @@ const updateWorkspaceFileRecord = async (req, res) => {
             ? await readJsonContent(file.storage_path)
             : updatedContent;
 
-        const metadataUpdated = await updateWorkspaceFile(
-            resourceId,
-            updatedName,
-            Buffer.byteLength(JSON.stringify(currentContent), 'utf8'),
-            updatedCategory
-        );
+
+        let metadataUpdated;
+
+        try {
+            metadataUpdated = await updateWorkspaceFile(
+                resourceId,
+                updatedName,
+                Buffer.byteLength(JSON.stringify(currentContent), 'utf8'),
+                updatedCategory
+            );
+        } catch (metadataError) {
+            // Restore the original content if the database update throws.
+            if (content !== undefined) {
+                try {
+                    await uploadJsonContent(
+                        file.storage_path,
+                        previousContent
+                    );
+                } catch (restoreError) {
+                    console.error(
+                        'Workspace content restoration failed:',
+                        restoreError
+                    );
+
+                    return res.status(500).json({
+                        message: 'Metadata update failed, and the original content could not be restored.',
+                    });
+                }
+            }
+
+            throw metadataError;
+        }
 
         if (!metadataUpdated) {
+            // Restore the original content if the database update returned false.
+            if (content !== undefined) {
+                try {
+                    await uploadJsonContent(
+                        file.storage_path,
+                        previousContent
+                    );
+                } catch (restoreError) {
+                    console.error(
+                        'Workspace content restoration failed:',
+                        restoreError
+                    );
+
+                    return res.status(500).json({
+                        message: 'Metadata update failed, and the original content could not be restored.',
+                    });
+                }
+            }
+
             const error = new Error('Workspace file metadata could not be updated.');
             error.status = 404;
             throw error;

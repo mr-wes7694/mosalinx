@@ -386,6 +386,13 @@ const downloadResource = async (req, res) => {
             });
         }
 
+        // Workspace files must use the Workspace file API.
+        if (resource.resource_type?.startsWith('workspace_')) {
+            return res.status(404).json({
+                message: 'Resource not found.',
+            });
+        }
+
         // Find the MySQL user connected to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
@@ -501,6 +508,13 @@ const deleteResource = async (req, res) => {
             });
         }
 
+        // Workspace files must use the Workspace file API.
+        if (resource.resource_type?.startsWith('workspace_')) {
+            return res.status(404).json({
+                message: 'Resource not found.',
+            });
+        }
+
         // Find the MySQL user connected to the Firebase account.
         const user = await findUserByFirebaseUid(firebaseUid);
 
@@ -535,14 +549,20 @@ const deleteResource = async (req, res) => {
             });
         }
 
-        // Delete the Firebase Storage file first.
-        await deleteResourceStorageFile(
-            resource.storage_path
+        // Delete the MySQL resource record first.
+        const wasDeleted = await deleteResourceRecord(
+            resource.resource_id
         );
 
-        // Delete the MySQL resource record.
-        await deleteResourceRecord(
-            resource.resource_id
+        if (!wasDeleted) {
+            return res.status(404).json({
+                message: 'Resource not found.',
+            });
+        }
+
+        // Delete the Storage file after the database confirms deletion.
+        await deleteResourceStorageFile(
+            resource.storage_path
         );
 
         return res.status(200).json({
@@ -559,25 +579,26 @@ const deleteResource = async (req, res) => {
     }
 };
 
-// Update resource category after verifying project permissions.
-const updateResourceMetadata = async (req, res) => {
-    const { resourceId } = req.params;
-    const { category } = req.body || {};
 
-    // Validate the resource ID and category before querying the database.
-    if (!/^[1-9]\d*$/.test(resourceId || '')) {
-        return res.status(400).json({
-            message: 'resourceId must be a valid number.',
-        });
-    }
+    // Update resource category after verifying project permissions.
+    const updateResourceMetadata = async (req, res) => {
+        const { resourceId } = req.params;
+        const { category } = req.body || {};
 
-    const validCategories = [
-        'document',
-        'image',
-        'video',
-        'audio',
-        'other',
-    ];
+        // Validate the resource ID and category before querying the database.
+        if (!/^[1-9]\d*$/.test(resourceId || '')) {
+            return res.status(400).json({
+                message: 'resourceId must be a valid number.',
+            });
+        }
+
+        const validCategories = [
+            'document',
+            'image',
+            'video',
+            'audio',
+            'other',
+        ];
 
     // Null represents an Uncategorized resource.
     if (category !== null && !validCategories.includes(category)) {
