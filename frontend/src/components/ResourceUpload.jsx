@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { auth } from "../firebase";
 import { API_BASE_URL } from "../config/api";
 import ResourceCategory from "./ResourceCategory";
@@ -7,195 +7,278 @@ import "./ResourceUpload.css";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function ResourceUpload({ projectId, onUploadSuccess }) {
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [category, setCategory] = useState("");
-    const [fileError, setFileError] = useState("");
-    const [uploadStatus, setUploadStatus] = useState("");
-    const [uploading, setUploading] = useState(false);
+  // Track the file input and whether a file is being dragged over the drop zone.
+  const fileInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [category, setCategory] = useState("");
+  const [fileError, setFileError] = useState("");
+  const [uploading, setUploading] = useState(false);
 
-    const handleFileChange = (event) => {
-        const file = event.target.files[0];
+  // Validate files consistently whether selected or dropped.
+  const selectFile = (file) => {
+    setFileError("");
 
-        setFileError("");
-        setUploadStatus("");
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
 
-        if (!file) {
-            setSelectedFile(null);
-            return;
+    if (file.size > MAX_FILE_SIZE) {
+      setSelectedFile(null);
+      setFileError("File size cannot exceed 10 MB.");
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  // Handle files selected through the browser's file chooser.
+  const handleFileChange = (event) => {
+    selectFile(event.target.files?.[0]);
+  };
+
+  // Clear the selected file and reset the native file input.
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setFileError("");
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Highlight the drop zone when a file is dragged over it.
+  const handleDragOver = (event) => {
+    event.preventDefault();
+
+    if (!uploading) {
+      setIsDragging(true);
+    }
+  };
+
+  // Remove the highlight when a dragged file leaves the drop zone.
+  const handleDragLeave = (event) => {
+    event.preventDefault();
+
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+
+  // Validate dropped files using the same rules as the file chooser.
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+
+    if (uploading) {
+      return;
+    }
+
+    const files = event.dataTransfer.files;
+
+    // Clear any previous browser selection before processing dropped files.
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    if (files.length > 1) {
+      setSelectedFile(null);
+      setFileError("Please upload one file at a time.");
+      return;
+    }
+
+    selectFile(files[0]);
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    setFileError("");
+
+    if (!selectedFile) {
+      setFileError("Please select a file.");
+      return;
+    }
+
+    if (!projectId) {
+      setFileError("No active project is selected.");
+      return;
+    }
+
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      setFileError("You must be signed in to upload a resource.");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const token = await currentUser.getIdToken();
+
+      const formData = new FormData();
+
+      formData.append("file", selectedFile);
+      formData.append("projectId", projectId);
+
+      if (category) {
+        formData.append("category", category);
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/resources/upload`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
         }
+      );
 
-        if (file.size > MAX_FILE_SIZE) {
-            setSelectedFile(null);
-            setFileError("File size cannot exceed 10 MB.");
-            event.target.value = "";
-            return;
-        }
+      const data = await response.json();
 
-        setSelectedFile(file);
-    };
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Failed to upload resource."
+        );
+      }
 
-    const handleRemoveFile = () => {
-        setSelectedFile(null);
-        setFileError("");
-        setUploadStatus("");
+      setSelectedFile(null);
+      setCategory("");
 
-        const fileInput = document.getElementById("resource-file");
+      // Notify the parent after the upload succeeds so it can
+      // close the form, refresh the repository, and show feedback.
+      if (onUploadSuccess) {
+        onUploadSuccess();
+      }
 
-        if (fileInput) {
-            fileInput.value = "";
-        }
-    };
+      // Reset the native file input after a successful upload.
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
 
-    const handleSubmit = async (event) => {
-        event.preventDefault();
+    } catch (error) {
+      console.error("Resource upload failed:", error);
+      setFileError(
+        error instanceof TypeError
+          ? "Unable to upload resource. Please check your connection and try again."
+          : error.message || "Failed to upload resource."
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
-        setFileError("");
-        setUploadStatus("");
+  return (
+    <section className="resource-upload">
+      <div className="resource-upload-header">
+        <h2>Upload Resource</h2>
+        <p>Add a file to your project workspace.</p>
+      </div>
 
-        if (!selectedFile) {
-            setFileError("Please select a file.");
-            return;
-        }
+      <form onSubmit={handleSubmit}>
+        <div className="upload-field">
+          {/* Support drag-and-drop and traditional file browsing through
+              one shared file input and validation workflow. */}
+          <label htmlFor="resource-file">
+            Select File
+          </label>
 
-        if (!projectId) {
-            setFileError("No active project is selected.");
-            return;
-        }
+          <div
+            className={`resource-drop-zone${isDragging ? " is-dragging" : ""}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <input
+              ref={fileInputRef}
+              id="resource-file"
+              className="resource-file-input"
+              type="file"
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
 
-        const currentUser = auth.currentUser;
+            <label
+              htmlFor="resource-file"
+              className="resource-drop-zone-content"
+            >
+              <span className="resource-drop-zone-icon" aria-hidden="true">
+                ↑
+              </span>
 
-        if (!currentUser) {
-            setFileError("You must be signed in to upload a resource.");
-            return;
-        }
+              <strong>Drag and drop your file here</strong>
 
-        setUploading(true);
+              <span>or click to browse your device</span>
 
-        try {
-            const token = await currentUser.getIdToken();
+              <span className="resource-drop-zone-hint">
+                Maximum file size: 10 MB
+              </span>
+            </label>
+          </div>
 
-            const formData = new FormData();
+          {fileError && (
+            <p className="upload-error">
+              {fileError}
+            </p>
+          )}
 
-            formData.append("file", selectedFile);
-            formData.append("projectId", projectId);
+          {/* Preview the selected file and allow removal before uploading. */}
+          {selectedFile && (
+            <div className="selected-file">
+              <div className="selected-file-details">
+                <span className="selected-file-icon" aria-hidden="true">
+                  📄
+                </span>
 
-            if (category) {
-                formData.append("category", category);
-            }
+                <div className="selected-file-info">
+                  <strong title={selectedFile.name}>
+                    {selectedFile.name}
+                  </strong>
 
-            const response = await fetch(
-                `${API_BASE_URL}/api/resources/upload`,
-                {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: formData,
-                }
-            );
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Failed to upload resource."
-                );
-            }
-
-            setUploadStatus("Resource uploaded successfully.");
-
-            setSelectedFile(null);
-            setCategory("");
-
-            if (onUploadSuccess) {
-                await onUploadSuccess();
-            }
-
-            const fileInput = document.getElementById("resource-file");
-
-            if (fileInput) {
-                fileInput.value = "";
-            }
-        } catch (error) {
-            console.error("Resource upload failed:", error);
-            setFileError(
-                error.message || "Failed to upload resource."
-            );
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    return (
-        <section className="resource-upload">
-            <div className="resource-upload-header">
-                <h2>Upload Resource</h2>
-                <p>Add a file to your project workspace.</p>
-            </div>
-
-            <form onSubmit={handleSubmit}>
-                <div className="upload-field">
-                    <label htmlFor="resource-file">
-                        Select File
-                    </label>
-
-                    <input
-                        id="resource-file"
-                        type="file"
-                        onChange={handleFileChange}
-                        disabled={uploading}
-                    />
-
-                    {fileError && (
-                        <p className="upload-error">
-                            {fileError}
-                        </p>
-                    )}
-
-                    {uploadStatus && (
-                        <p className="upload-success">
-                            {uploadStatus}
-                        </p>
-                    )}
-
-                    {selectedFile && (
-                        <div className="selected-file">
-                            <p>
-                                <strong>Selected:</strong>{" "}
-                                {selectedFile.name}
-                            </p>
-
-                            <p>
-                                Size:{" "}
-                                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
-                            </p>
-
-                            <button
-                                type="button"
-                                onClick={handleRemoveFile}
-                                disabled={uploading}
-                            >
-                                Remove File
-                            </button>
-                        </div>
-                    )}
+                  <span>
+                    {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                    {" · "}Ready to upload
+                  </span>
                 </div>
+              </div>
 
-                <ResourceCategory
-                    value={category}
-                    onChange={setCategory}
-                    disabled={uploading}
-                />
+              <button
+                type="button"
+                className="selected-file-remove"
+                onClick={handleRemoveFile}
+                disabled={uploading}
+                aria-label={`Remove ${selectedFile.name}`}
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
 
-                <button
-                    type="submit"
-                    disabled={!selectedFile || !projectId || uploading}
-                >
-                    {uploading ? "Uploading..." : "Upload Resource"}
-                </button>
-            </form>
-        </section>
-    );
+        <ResourceCategory
+          value={category}
+          onChange={setCategory}
+          disabled={uploading}
+        />
+
+        <button
+          type="submit"
+          disabled={!selectedFile || !projectId || uploading}
+        >
+          {uploading ? "Uploading..." : "Upload Resource"}
+        </button>
+      </form>
+    </section>
+  );
 }
 
 export default ResourceUpload;

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth.js'
 import { useProject } from '../context/useProject'
 import { API_BASE_URL } from '../config/api'
+import TimePicker from '../components/TimePicker.jsx'
 import './Calendar.css'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -135,6 +136,8 @@ function Calendar() {
   const [startTime, setStartTime] = useState('09:00')
   const [endDate, setEndDate] = useState('')
   const [endTime, setEndTime] = useState('10:00')
+  const [startTimeValid, setStartTimeValid] = useState(true)
+  const [endTimeValid, setEndTimeValid] = useState(true)
   const [eventDescription, setEventDescription] = useState('')
   const [formError, setFormError] = useState('')
 
@@ -254,6 +257,8 @@ function Calendar() {
     setEndDate(toDateInputValue(base))
     setEndTime('10:00')
     setEventDescription('')
+    setStartTimeValid(true)
+    setEndTimeValid(true)
     setFormError('')
   }
 
@@ -265,6 +270,8 @@ function Calendar() {
     setEndDate(toDateInputValue(item.end))
     setEndTime(toTimeInputValue(item.end))
     setEventDescription(item.description || '')
+    setStartTimeValid(true)
+    setEndTimeValid(true)
     setFormError('')
   }
 
@@ -287,6 +294,12 @@ function Calendar() {
     if (!startDate || !endDate) {
       return 'Please choose a start and end date.'
     }
+
+    // Prevent saving an event with invalid or unfinished time entries.
+    if (!startTimeValid || !endTimeValid) {
+      return 'Please enter a valid start and end time.'
+    }
+
     const start = new Date(`${startDate}T${startTime}`)
     const end = new Date(`${endDate}T${endTime}`)
     if (end <= start) {
@@ -642,13 +655,14 @@ function Calendar() {
               setStartDate(e.target.value)
             }}
           />
-          <input
-            type="time"
-            className="calendar-form-input calendar-form-input--time"
+          <TimePicker
+            key={`start-${panelMode}-${activeItem?.event_id ?? 'new'}`}
+            label="Start time"
             value={startTime}
-            onChange={(e) => {
+            onValidityChange={setStartTimeValid}
+            onChange={(value) => {
               setFormError('')
-              setStartTime(e.target.value)
+              setStartTime(value)
             }}
           />
         </div>
@@ -666,13 +680,14 @@ function Calendar() {
               setEndDate(e.target.value)
             }}
           />
-          <input
-            type="time"
-            className="calendar-form-input calendar-form-input--time"
+          <TimePicker
+            key={`end-${panelMode}-${activeItem?.event_id ?? 'new'}`}
+            label="End time"
             value={endTime}
-            onChange={(e) => {
+            onValidityChange={setEndTimeValid}
+            onChange={(value) => {
               setFormError('')
-              setEndTime(e.target.value)
+              setEndTime(value)
             }}
           />
         </div>

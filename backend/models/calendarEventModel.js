@@ -55,8 +55,8 @@ const findCalendarEventById = async (eventId) => {
             event_title,
             event_type,
             event_description,
-            start_datetime,
-            end_datetime,
+            DATE_FORMAT(start_datetime, '%Y-%m-%dT%H:%i:%s') AS start_datetime,
+            DATE_FORMAT(end_datetime, '%Y-%m-%dT%H:%i:%s') AS end_datetime,
             created_at,
             updated_at
         FROM calendar_events
@@ -78,8 +78,8 @@ const findCalendarEventsByProject = async (projectId) => {
             event_title,
             event_type,
             event_description,
-            start_datetime,
-            end_datetime,
+            DATE_FORMAT(start_datetime, '%Y-%m-%dT%H:%i:%s') AS start_datetime,
+            DATE_FORMAT(end_datetime, '%Y-%m-%dT%H:%i:%s') AS end_datetime,
             created_at,
             updated_at
         FROM calendar_events
