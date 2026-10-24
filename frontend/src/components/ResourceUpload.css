@@ -1,99 +1,259 @@
 .resource-upload {
-    width: 100%;
-    max-width: 600px;
-    margin: 30px auto;
-    padding: 24px;
-    border: 1px solid #ddd;
-    border-radius: 12px;
-    background-color: #fff;
-    color: #222;
-    box-sizing: border-box;
+  width: 100%;
+  max-width: 600px;
+  margin: 30px auto;
+  padding: 24px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background-color: #fff;
+  color: #222;
+  box-sizing: border-box;
 }
 
 .resource-upload-header {
-    margin-bottom: 24px;
+  margin-bottom: 24px;
 }
 
 .resource-upload-header h2 {
-    margin: 0 0 8px;
-    color: #222;
+  margin: 0 0 8px;
+  color: #222;
 }
 
 .resource-upload-header p {
-    margin: 0;
-    color: #666;
+  margin: 0;
+  color: #666;
 }
 
 .resource-upload form {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .upload-field {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .upload-field label {
-    font-weight: 600;
-    color: #222;
+  font-weight: 600;
+  color: #222;
 }
 
 .upload-field input,
 .upload-field select {
-    color: #222;
-    background-color: #fff;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 1rem;
-    box-sizing: border-box;
-}
-
-.selected-file {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #555;
+  color: #222;
+  background-color: #fff;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+  box-sizing: border-box;
 }
 
 .resource-upload button {
-    padding: 12px 18px;
-    border: none;
-    border-radius: 6px;
-    font-size: 1rem;
-    cursor: pointer;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
 }
 
 .resource-upload button:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .upload-error {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #b00020;
+  margin: 0;
+  font-size: 0.9rem;
+  color: #b00020;
 }
 
+/* Present file selection as an inviting, accessible upload area. */
+.resource-drop-zone {
+  position: relative;
+  border: 2px dashed rgba(20, 187, 196, 0.55);
+  border-radius: 10px;
+  background: rgba(20, 187, 196, 0.05);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.resource-drop-zone:hover,
+.resource-drop-zone:focus-within,
+.resource-drop-zone.is-dragging {
+  border-color: #14bbc4;
+  background: rgba(20, 187, 196, 0.12);
+  box-shadow: 0 0 0 3px rgba(20, 187, 196, 0.08);
+}
+
+/* Keep the native file input available to keyboard users. */
+.resource-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.resource-drop-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 30px 20px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.resource-drop-zone-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(20, 187, 196, 0.14);
+  color: #087e85;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.resource-drop-zone-content strong {
+  color: #222222;
+  font-size: 1rem;
+}
+
+.resource-drop-zone-content>span:not(.resource-drop-zone-icon) {
+  color: #5f6368;
+  font-size: 0.9rem;
+}
+
+.resource-drop-zone-content .resource-drop-zone-hint {
+  margin-top: 4px;
+  font-size: 0.8rem;
+}
+
+.resource-drop-zone:has(.resource-file-input:disabled) {
+  opacity: 0.65;
+}
+
+.resource-drop-zone:has(.resource-file-input:disabled) .resource-drop-zone-content {
+  cursor: not-allowed;
+}
+
+/* Display selected files as compact attachments with clear actions. */
 .selected-file {
-    display: flex;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #dce5e6;
+  border-radius: 9px;
+  background: #f7fbfb;
+}
+
+.selected-file-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.selected-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 9px;
+  background: rgba(20, 187, 196, 0.12);
+  font-size: 1.4rem;
+}
+
+.selected-file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.selected-file-info strong {
+  overflow: hidden;
+  color: #222222;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file-info span {
+  color: #5f6368;
+  font-size: 0.85rem;
+}
+
+.resource-upload .selected-file-remove {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid #dce5e6;
+  background: #ffffff;
+  color: #444444;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.resource-upload .selected-file-remove:hover:not(:disabled) {
+  border-color: #b00020;
+  background: #fff1f3;
+  color: #b00020;
+}
+
+/* Keep attachment details readable on narrower screens. */
+@media (max-width: 480px) {
+  .selected-file {
     flex-direction: column;
-    gap: 4px;
+    align-items: stretch;
+  }
+
+  .resource-upload .selected-file-remove {
+    align-self: flex-end;
+  }
 }
 
-.selected-file p {
-    margin: 0;
+/* Give the upload action a clear visual hierarchy. */
+.resource-upload form>button[type="submit"] {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 13px 20px;
+  border: 1px solid #111111;
+  border-radius: 8px;
+  background: #111111;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.selected-file button {
-    align-self: flex-start;
-    margin-top: 8px;
-    padding: 8px 12px;
-    font-size: 0.9rem;
+/* Match the teal hover treatment used by other Mosalinx buttons. */
+.resource-upload form > button[type="submit"]:hover:not(:disabled) {
+  border-color: #14bbc4;
+  background: #14bbc4;
+  color: #111111;
 }
-.upload-success {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #176b2c;
+
+.resource-upload form>button[type="submit"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.resource-upload form>button[type="submit"]:focus-visible {
+  outline: 3px solid rgba(20, 187, 196, 0.4);
+  outline-offset: 3px;
 }
