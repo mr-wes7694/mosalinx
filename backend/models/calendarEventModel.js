@@ -5,6 +5,7 @@ const createCalendarEvent = async (
     projectId,
     createdBy,
     eventTitle,
+    eventType,
     eventDescription,
     startDatetime,
     endDatetime
@@ -15,15 +16,17 @@ const createCalendarEvent = async (
             project_id,
             created_by,
             event_title,
+            event_type,
             event_description,
             start_datetime,
             end_datetime
         )
-        VALUES (?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
             projectId,
             createdBy,
             eventTitle,
+            eventType,
             eventDescription,
             startDatetime,
             endDatetime,
@@ -35,6 +38,7 @@ const createCalendarEvent = async (
         projectId,
         createdBy,
         eventTitle,
+        eventType,
         eventDescription,
         startDatetime,
         endDatetime,
@@ -49,6 +53,7 @@ const findCalendarEventById = async (eventId) => {
             project_id,
             created_by,
             event_title,
+            event_type,
             event_description,
             start_datetime,
             end_datetime,
@@ -71,6 +76,7 @@ const findCalendarEventsByProject = async (projectId) => {
             project_id,
             created_by,
             event_title,
+            event_type,
             event_description,
             start_datetime,
             end_datetime,
@@ -89,6 +95,7 @@ const findCalendarEventsByProject = async (projectId) => {
 const updateCalendarEvent = async (
     eventId,
     eventTitle,
+    eventType,
     eventDescription,
     startDatetime,
     endDatetime
@@ -97,12 +104,14 @@ const updateCalendarEvent = async (
         `UPDATE calendar_events
         SET
             event_title = ?,
+            event_type = ?,
             event_description = ?,
             start_datetime = ?,
             end_datetime = ?
         WHERE event_id = ?`,
         [
             eventTitle,
+            eventType,
             eventDescription,
             startDatetime,
             endDatetime,

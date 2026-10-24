@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth.js'
+import { useProject } from '../context/useProject'
+import { API_BASE_URL } from '../config/api'
 import './Calendar.css'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -35,21 +37,6 @@ const TYPE_CLASS_MAP = {
   'Other': 'other',
 }
 
-const LOCATION_CATEGORIES = ['Office', 'Online', 'Out of Office', 'Away']
-
-const OFFICE_ROOMS = [
-  'Conference Room A',
-  'Conference Room B',
-  'Conference Room C',
-  'Auditorium',
-  'Break Room',
-  'Lobby',
-  'My Office',
-]
-
-const ONLINE_APPS = ['Teams', 'Zoom', 'Webex', 'Slack']
-
-const OUT_OF_OFFICE_MAX_LENGTH = 30
 const DESCRIPTION_PREVIEW_LENGTH = 60
 const MAX_VISIBLE_LANES = 3
 
@@ -65,14 +52,16 @@ function toTimeInputValue(date) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-function formatTime(date) {
-  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+// Parse API datetime values while preserving timezone information for correct local display.
+function parseCalendarDatetime(value) {
+  if (!value) return null
+
+  const normalized = String(value).replace(' ', 'T')
+  return new Date(normalized)
 }
 
-function formatLocation(category, detail) {
-  if (!category) return ''
-  if (!detail) return category
-  return `${category} · ${detail}`
+function formatTime(date) {
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
 function getDescriptionPreview(description) {
@@ -124,12 +113,13 @@ function getMonthGrid(year, month) {
 
 function Calendar() {
   const { currentUser } = useAuth()
+  const { activeProject, loadingProjects } = useProject()
+  const projectId = activeProject?.project_id
   const today = new Date()
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [events, setEvents] = useState([])
   const [status, setStatus] = useState('loading') // 'loading' | 'success' | 'error'
   const [selectedDay, setSelectedDay] = useState(null)
-  const [localItems, setLocalItems] = useState({}) // { 'YYYY-M-D': [items] }
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerMonth, setPickerMonth] = useState(today.getMonth())
   const [pickerYear, setPickerYear] = useState(today.getFullYear())
@@ -145,10 +135,11 @@ function Calendar() {
   const [startTime, setStartTime] = useState('09:00')
   const [endDate, setEndDate] = useState('')
   const [endTime, setEndTime] = useState('10:00')
-  const [locationCategory, setLocationCategory] = useState('')
-  const [locationDetail, setLocationDetail] = useState('')
   const [eventDescription, setEventDescription] = useState('')
   const [formError, setFormError] = useState('')
+
+  // Track event submissions to prevent duplicate requests.
+  const [isSavingEvent, setIsSavingEvent] = useState(false)
 
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -178,11 +169,23 @@ function Calendar() {
     let cancelled = false
 
     async function loadEvents() {
+      // Wait for project data and avoid requesting events without an active project.
+      if (loadingProjects) {
+        setStatus('loading')
+        return
+      }
+
+      if (!projectId || !currentUser) {
+        setEvents([])
+        setStatus('success')
+        return
+      }
+
       setStatus('loading')
       try {
         const token = await currentUser?.getIdToken?.()
         const response = await fetch(
-          `/api/calendar/events?year=${year}&month=${month + 1}`,
+          `${API_BASE_URL}/api/calendar-events/project/${projectId}`,
           {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
           }
@@ -190,7 +193,7 @@ function Calendar() {
         if (!response.ok) throw new Error('Request failed')
         const data = await response.json()
         if (!cancelled) {
-          setEvents(Array.isArray(data) ? data : [])
+          setEvents(Array.isArray(data.events) ? data.events : [])
           setStatus('success')
         }
       } catch {
@@ -205,7 +208,7 @@ function Calendar() {
     return () => {
       cancelled = true
     }
-  }, [year, month, currentUser])
+  }, [projectId, loadingProjects, currentUser])
 
   // Changes the month being viewed and clears any selected day, since a day
   // selected in one month has no guaranteed equivalent in another (e.g. the
@@ -225,20 +228,6 @@ function Calendar() {
 
   function goToNextMonth() {
     changeMonth(new Date(year, month + 1, 1))
-  }
-
-  // Range-aware: an item shows up on every day between its start and end, not just its start day.
-  function eventsForDay(day) {
-    const dayDate = new Date(year, month, day)
-    return events.filter((e) => isSameDate(new Date(e.date), dayDate))
-  }
-
-  function localItemsForDay(day) {
-    const dayStart = new Date(year, month, day, 0, 0, 0, 0)
-    const dayEnd = new Date(year, month, day, 23, 59, 59, 999)
-    return Object.values(localItems)
-      .flat()
-      .filter((item) => item.start <= dayEnd && item.end >= dayStart)
   }
 
   function handleDayClick(day, inMonth) {
@@ -264,8 +253,6 @@ function Calendar() {
     setStartTime('09:00')
     setEndDate(toDateInputValue(base))
     setEndTime('10:00')
-    setLocationCategory('')
-    setLocationDetail('')
     setEventDescription('')
     setFormError('')
   }
@@ -277,8 +264,6 @@ function Calendar() {
     setStartTime(toTimeInputValue(item.start))
     setEndDate(toDateInputValue(item.end))
     setEndTime(toTimeInputValue(item.end))
-    setLocationCategory(item.locationCategory || '')
-    setLocationDetail(item.locationDetail || '')
     setEventDescription(item.description || '')
     setFormError('')
   }
@@ -291,11 +276,6 @@ function Calendar() {
   function cancelAddForm() {
     setFormError('')
     setPanelMode('list')
-  }
-
-  function selectLocationCategory(category) {
-    setLocationCategory(category)
-    setLocationDetail('')
   }
 
   // Shared by both the add and manage forms. Returns an error message to show
@@ -315,37 +295,69 @@ function Calendar() {
     return ''
   }
 
-  function handleSaveEvent() {
+  // Validate the form before submitting a new event to the project calendar.
+  async function handleSaveEvent() {
+    if (isSavingEvent) return
+
     const error = validateEventForm()
+
     if (error) {
       setFormError(error)
       return
     }
     setFormError('')
 
-    const start = new Date(`${startDate}T${startTime}`)
-    const end = new Date(`${endDate}T${endTime}`)
-    const key = `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`
-
-    const newItem = {
-      id: Date.now(),
-      dayKey: key,
-      title: eventTitle.trim(),
-      type: eventType,
-      start,
-      end,
-      locationCategory,
-      locationDetail,
-      location: formatLocation(locationCategory, locationDetail),
-      description: eventDescription.trim(),
+    // Preserve the entered local date and time for MySQL DATETIME fields.
+    const eventPayload = {
+      projectId,
+      eventTitle: eventTitle.trim(),
+      eventType,
+      eventDescription: eventDescription.trim(),
+      startDatetime: `${startDate}T${startTime}:00`,
+      endDatetime: `${endDate}T${endTime}:00`,
     }
 
-    setLocalItems((prev) => ({
-      ...prev,
-      [key]: [...(prev[key] ?? []), newItem],
-    }))
+    // Save the event to MySQL before updating the calendar.
+    setIsSavingEvent(true)
 
-    setPanelMode('list')
+    try {
+      const token = await currentUser.getIdToken()
+
+      const response = await fetch(`${API_BASE_URL}/api/calendar-events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(eventPayload),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Unable to create event.')
+      }
+
+      // Reload project events so the new event appears in the calendar.
+      const refreshResponse = await fetch(
+        `${API_BASE_URL}/api/calendar-events/project/${projectId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      if (!refreshResponse.ok) {
+        throw new Error('Event saved, but the calendar could not be refreshed.')
+      }
+
+      const refreshData = await refreshResponse.json()
+      setEvents(Array.isArray(refreshData.events) ? refreshData.events : [])
+      setPanelMode('list')
+    } catch (error) {
+      setFormError(error.message || 'Unable to create event.')
+    } finally {
+      setIsSavingEvent(false)
+    }
   }
 
   function openItemView(item) {
@@ -384,8 +396,9 @@ function Calendar() {
     setPanelMode('view')
   }
 
-  function handleUpdateEvent() {
-    if (!activeItem) return
+  // Validate changes before updating an existing calendar event.
+  async function handleUpdateEvent() {
+    if (!activeItem || isSavingEvent) return
 
     const error = validateEventForm()
     if (error) {
@@ -394,56 +407,118 @@ function Calendar() {
     }
     setFormError('')
 
-    const start = new Date(`${startDate}T${startTime}`)
-    const end = new Date(`${endDate}T${endTime}`)
-    const newKey = `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`
-    const oldKey = activeItem.dayKey
-
-    const updatedItem = {
-      ...activeItem,
-      dayKey: newKey,
-      title: eventTitle.trim(),
-      type: eventType,
-      start,
-      end,
-      locationCategory,
-      locationDetail,
-      location: formatLocation(locationCategory, locationDetail),
-      description: eventDescription.trim(),
+    // Preserve local date and time values when updating the calendar event.
+    const eventPayload = {
+      eventTitle: eventTitle.trim(),
+      eventType,
+      eventDescription: eventDescription.trim(),
+      startDatetime: `${startDate}T${startTime}:00`,
+      endDatetime: `${endDate}T${endTime}:00`,
     }
 
-    setLocalItems((prev) => {
-      const withoutOld = {
-        ...prev,
-        [oldKey]: (prev[oldKey] ?? []).filter((i) => i.id !== activeItem.id),
-      }
-      return {
-        ...withoutOld,
-        [newKey]: [...(withoutOld[newKey] ?? []), updatedItem],
-      }
-    })
+    // Save the updated event to the project's calendar in MySQL.
+    setIsSavingEvent(true)
 
-    setActiveItem(updatedItem)
-    setPanelMode('view')
+    try {
+      const token = await currentUser.getIdToken()
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/calendar-events/${activeItem.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(eventPayload),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.message || 'Unable to update event.')
+      }
+
+      // Reload saved events so the calendar reflects the latest database values.
+      const refreshResponse = await fetch(
+        `${API_BASE_URL}/api/calendar-events/project/${projectId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      if (!refreshResponse.ok) {
+        throw new Error('Event updated, but the calendar could not be refreshed.')
+      }
+
+      const refreshData = await refreshResponse.json()
+      const updatedEvents = Array.isArray(refreshData.events)
+        ? refreshData.events
+        : []
+
+      setEvents(updatedEvents)
+
+      // Return to the event list after the successful update.
+      setActiveItem(null)
+      setPanelMode('list')
+
+    } catch (error) {
+      setFormError(error.message || 'Unable to update event.')
+    } finally {
+      setIsSavingEvent(false)
+    }
   }
 
   function requestCancelEvent() {
+    // Clear previous form errors before opening the deletion confirmation.
+    setFormError('')
     setShowCancelEventConfirm(true)
   }
 
   function dismissCancelEventConfirm() {
+    if (isSavingEvent) return
     setShowCancelEventConfirm(false)
   }
 
-  function confirmCancelEvent() {
-    if (!activeItem) return
-    setLocalItems((prev) => ({
-      ...prev,
-      [activeItem.dayKey]: (prev[activeItem.dayKey] ?? []).filter((i) => i.id !== activeItem.id),
-    }))
-    setShowCancelEventConfirm(false)
-    setPanelMode('list')
-    setActiveItem(null)
+  async function confirmCancelEvent() {
+    if (!activeItem || isSavingEvent) return
+
+    // Delete the selected event from the project calendar in MySQL.
+    setIsSavingEvent(true)
+    setFormError('')
+
+    try {
+      const token = await currentUser.getIdToken()
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/calendar-events/${activeItem.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.message || 'Unable to delete event.')
+      }
+
+      // Update the calendar only after MySQL confirms the event was deleted.
+      setEvents((prev) =>
+        prev.filter((event) => event.event_id !== activeItem.id)
+      )
+
+      setShowCancelEventConfirm(false)
+      setPanelMode('list')
+      setActiveItem(null)
+
+    } catch (error) {
+      setFormError(error.message || 'Unable to delete event.')
+    } finally {
+      setIsSavingEvent(false)
+    }
   }
 
   const cells = getMonthGrid(year, month)
@@ -452,21 +527,18 @@ function Calendar() {
     weeks.push(cells.slice(i, i + 7))
   }
 
-  // Unified list of everything that can appear as a spanning bar on the grid:
-  // local (editable) items plus whatever the backend returned for this month.
-  const allLocalItems = Object.values(localItems)
-    .flat()
-    .map((item) => ({ ...item, source: 'local' }))
-
-  const allBackendItems = events.map((e, idx) => ({
-    id: `backend-${idx}`,
-    title: e.title,
-    start: new Date(e.date),
-    end: new Date(e.date),
+  // Convert database events into the format used by the calendar grid and sidebar.
+  const allBackendItems = events.map((event) => ({
+    id: event.event_id,
+    title: event.event_title,
+    type: event.event_type || 'Other',
+    start: parseCalendarDatetime(event.start_datetime),
+    end: parseCalendarDatetime(event.end_datetime || event.start_datetime),
+    description: event.event_description || '',
     source: 'backend',
   }))
 
-  const allDisplayItems = [...allBackendItems, ...allLocalItems]
+  const allDisplayItems = allBackendItems
 
   // Lays out one week's worth of spanning bars: clips each item to the week's
   // visible date range, assigns it a stacking lane, and tracks per-day overflow
@@ -520,8 +592,13 @@ function Calendar() {
       })
     : null
 
+  // Show events that overlap the selected day, including multi-day events.
   const combinedSelectedItems = selectedDay
-    ? [...eventsForDay(selectedDay), ...localItemsForDay(selectedDay)]
+    ? allDisplayItems.filter((item) => {
+        const dayStart = new Date(year, month, selectedDay, 0, 0, 0, 0)
+        const dayEnd = new Date(year, month, selectedDay, 23, 59, 59, 999)
+        return item.start <= dayEnd && item.end >= dayStart
+      })
     : []
 
   const eventFormFields = (
@@ -599,67 +676,6 @@ function Calendar() {
             }}
           />
         </div>
-      </div>
-
-      <div className="calendar-form-field">
-        <label className="calendar-form-label">Location</label>
-        <div className="calendar-location-pills">
-          {LOCATION_CATEGORIES.map((category) => (
-            <button
-              key={category}
-              type="button"
-              className={
-                'calendar-location-pill' +
-                (locationCategory === category ? ' is-active' : '')
-              }
-              onClick={() => selectLocationCategory(category)}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
-
-        {locationCategory === 'Office' && (
-          <select
-            className="calendar-form-select calendar-location-detail"
-            value={locationDetail}
-            onChange={(e) => setLocationDetail(e.target.value)}
-          >
-            <option value="">Select a room…</option>
-            {OFFICE_ROOMS.map((room) => (
-              <option key={room} value={room}>{room}</option>
-            ))}
-          </select>
-        )}
-
-        {locationCategory === 'Online' && (
-          <select
-            className="calendar-form-select calendar-location-detail"
-            value={locationDetail}
-            onChange={(e) => setLocationDetail(e.target.value)}
-          >
-            <option value="">Select an app…</option>
-            {ONLINE_APPS.map((app) => (
-              <option key={app} value={app}>{app}</option>
-            ))}
-          </select>
-        )}
-
-        {locationCategory === 'Out of Office' && (
-          <div className="calendar-location-detail">
-            <input
-              type="text"
-              className="calendar-form-input"
-              placeholder="Where are you?"
-              maxLength={OUT_OF_OFFICE_MAX_LENGTH}
-              value={locationDetail}
-              onChange={(e) => setLocationDetail(e.target.value)}
-            />
-            <span className="calendar-char-count">
-              {locationDetail.length}/{OUT_OF_OFFICE_MAX_LENGTH}
-            </span>
-          </div>
-        )}
       </div>
 
       <div className="calendar-form-field">
@@ -777,23 +793,11 @@ function Calendar() {
 
                     <div className="calendar-week-events">
                       {bars.map(({ item, startCol, endCol, lane }) => {
-                        const isLocal = item.source === 'local'
-                        const typeClass = isLocal ? (TYPE_CLASS_MAP[item.type] ?? 'other') : 'backend'
+                        // Apply the appropriate color styling based on the saved event type.
+                        const typeClass = TYPE_CLASS_MAP[item.type] ?? 'other'
                         const style = {
                           gridColumn: `${startCol + 1} / ${endCol + 2}`,
                           gridRow: lane + 1,
-                        }
-
-                        if (!isLocal) {
-                          return (
-                            <span
-                              key={item.id}
-                              className="calendar-event-bar calendar-event-bar--backend"
-                              style={style}
-                            >
-                              {item.title}
-                            </span>
-                          )
                         }
 
                         return (
@@ -860,14 +864,8 @@ function Calendar() {
                   {combinedSelectedItems.length === 0 ? (
                     <p className="calendar-sidepanel-empty">No items for this day yet.</p>
                   ) : (
-                    combinedSelectedItems.map((item, idx) => {
-                      if (!item.type) {
-                        return (
-                          <div key={idx} className="calendar-sidepanel-item">
-                            {item.title}
-                          </div>
-                        )
-                      }
+                    combinedSelectedItems.map((item) => {
+                      // All events use the same interactive details and management controls.
                       return (
                         <button
                           key={item.id}
@@ -884,9 +882,7 @@ function Calendar() {
                               {formatTime(item.start)} – {formatTime(item.end)}
                             </span>
                           </div>
-                          {item.location && (
-                            <div className="calendar-sidepanel-item-location">{item.location}</div>
-                          )}
+
                           {item.description && (
                             <div className="calendar-sidepanel-item-description">
                               {getDescriptionPreview(item.description)}
@@ -908,7 +904,13 @@ function Calendar() {
                 )}
                 <div className="calendar-form-actions">
                   <button className="calendar-form-cancel" onClick={cancelAddForm}>Cancel</button>
-                  <button className="calendar-form-save" onClick={handleSaveEvent}>Save</button>
+                  <button
+                    className="calendar-form-save"
+                    onClick={handleSaveEvent}
+                    disabled={isSavingEvent}
+                  >
+                    {isSavingEvent ? 'Saving...' : 'Save'}
+                  </button>
                 </div>
               </div>
             )}
@@ -932,13 +934,6 @@ function Calendar() {
                     {formatTime(activeItem.start)} – {formatTime(activeItem.end)}
                   </span>
                 </div>
-
-                {activeItem.location && (
-                  <div className="calendar-detail-field">
-                    <span className="calendar-detail-label">Location</span>
-                    <span className="calendar-detail-value">{activeItem.location}</span>
-                  </div>
-                )}
 
                 {activeItem.description && (
                   <div className="calendar-detail-field">
@@ -983,12 +978,23 @@ function Calendar() {
             <p className="calendar-modal-text">
               This will permanently remove "{activeItem?.title}" from the calendar.
             </p>
+
+            {formError && (
+              <p className="calendar-form-error" role="alert">
+                {formError}
+              </p>
+            )}
+
             <div className="calendar-modal-actions">
               <button className="calendar-modal-stay" onClick={dismissCancelEventConfirm}>
                 Keep event
               </button>
-              <button className="calendar-modal-discard" onClick={confirmCancelEvent}>
-                Cancel event
+              <button
+                className="calendar-modal-discard"
+                onClick={confirmCancelEvent}
+                disabled={isSavingEvent}
+              >
+                {isSavingEvent ? 'Deleting...' : 'Cancel event'}
               </button>
             </div>
           </div>
