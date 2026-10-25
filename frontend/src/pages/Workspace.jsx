@@ -524,6 +524,15 @@ const WORKSPACE_FOLDER_IDS = {
   Source: 'folder-src',
 }
 
+// Default folder for each Workspace editor file type.
+const DEFAULT_FILE_FOLDERS = {
+  document: WORKSPACE_FOLDER_IDS.Documents,
+  spreadsheet: WORKSPACE_FOLDER_IDS.Spreadsheets,
+  presentation: WORKSPACE_FOLDER_IDS.Presentations,
+  sql: WORKSPACE_FOLDER_IDS.Database,
+  code: WORKSPACE_FOLDER_IDS.Source,
+}
+
 // Match saved resource types to editor file types.
 const WORKSPACE_FILE_TYPES = {
   workspace_document: 'document',
@@ -544,17 +553,6 @@ function findNode(nodes, id) {
     }
   }
   return null
-}
-
-function findParentId(nodes, id, parentId = 'ROOT') {
-  for (const node of nodes) {
-    if (node.id === id) return parentId
-    if (node.type === 'folder' && node.children) {
-      const found = findParentId(node.children, id, node.id)
-      if (found !== undefined) return found
-    }
-  }
-  return undefined
 }
 
 function updateNode(nodes, id, updater) {
@@ -600,6 +598,7 @@ function buildWorkspaceTree(files) {
       resourceId: file.resource_id,
       name: file.resource_name,
       type,
+      revision: 0,
       dirty: false,
     }
 
@@ -686,7 +685,39 @@ function Workspace() {
   )
   // No file is selected on load, so the feed is the landing screen.
   const [selectedId, setSelectedId] = useState(null)
+  // Track the file currently being renamed in the explorer.
+  const [renamingFileId, setRenamingFileId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
   const [newFileMenuOpen, setNewFileMenuOpen] = useState(false)
+  // Reference the New File menu for outside-click dismissal.
+  const newFileMenuRef = useRef(null)
+  // Close the New File menu when clicking outside or pressing Escape.
+  useEffect(() => {
+    if (!newFileMenuOpen) return
+
+    function handleOutsideClick(event) {
+      if (
+        newFileMenuRef.current &&
+        !newFileMenuRef.current.contains(event.target)
+      ) {
+        setNewFileMenuOpen(false)
+      }
+    }
+
+    function handleEscapeKey(event) {
+      if (event.key === 'Escape') {
+        setNewFileMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('keydown', handleEscapeKey)
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('keydown', handleEscapeKey)
+    }
+  }, [newFileMenuOpen])
   const [activeCell, setActiveCell] = useState('A1')
   const [activeRibbonTab, setActiveRibbonTab] = useState('Home')
   const [explorerOpen, setExplorerOpen] = useState(true)
@@ -737,7 +768,9 @@ function Workspace() {
       const projectId = activeProject?.project_id
       const user = auth.currentUser
 
+      // Clear the previous project's files before loading the next project.
       setSelectedId(null)
+      setTree(buildWorkspaceTree([]))
       setSaveError('')
 
       if (!projectId || !user) {
@@ -775,14 +808,31 @@ function Workspace() {
     }
   }, [activeProject?.project_id])
 
+  // Prevent project changes from interrupting saves or silently losing edits.
   const handleProjectChange = (event) => {
+    if (savingFile) return
+
     const selectedProject = projects.find(
       (project) => String(project.project_id) === event.target.value
     )
 
-    if (selectedProject) {
-      setActiveProject(selectedProject)
+    if (!selectedProject || selectedProject.project_id === activeProject?.project_id) {
+      return
     }
+
+    const hasUnsavedFiles = flattenFiles(tree).some(
+      (file) => findNode(tree, file.id)?.dirty
+    )
+
+    if (hasUnsavedFiles) {
+      const confirmed = window.confirm(
+        'You have unsaved Workspace files. Switching projects will discard those changes. Continue?'
+      )
+
+      if (!confirmed) return
+    }
+
+    setActiveProject(selectedProject)
   }
 
   function openNewProjectModal() {
@@ -841,6 +891,40 @@ function Workspace() {
     })
   }
 
+  // Start renaming a file while keeping its extension protected.
+  function startRenamingFile(node) {
+    const extension = FILE_TYPES[node.type]?.extension ?? ''
+    const baseName = node.name.endsWith(extension)
+      ? node.name.slice(0, -extension.length)
+      : node.name
+
+    setRenamingFileId(node.id)
+    setRenameValue(baseName)
+  }
+
+  // Apply the new filename and mark the file as unsaved.
+  function confirmRenameFile(node) {
+    const baseName = renameValue.trim()
+    if (!baseName) return
+
+    const extension = FILE_TYPES[node.type]?.extension ?? ''
+    const newName = `${baseName}${extension}`
+
+    if (newName !== node.name) {
+      setTree((prev) =>
+        updateNode(prev, node.id, (current) => ({
+          ...current,
+          name: newName,
+          dirty: true,
+          revision: (current.revision ?? 0) + 1,
+        }))
+      )
+    }
+
+    setRenamingFileId(null)
+    setRenameValue('')
+  }
+
   function selectNode(id) {
     setSelectedId(id)
     setActiveCell('A1')
@@ -851,118 +935,130 @@ function Workspace() {
     setFeedOpen(false)
   }
 
-  // Any real edit flags the file as having unsaved changes (node.dirty),
-  // which is what enables the Save button. Pass markDirty = false for
-  // view-only state like which slide is showing.
+  // Apply editor changes and track revisions for safe persistence.
+  // View-only updates do not mark the file as unsaved.
   function updateSelectedFile(updater, markDirty = true) {
     if (!selectedId) return
+
     setTree((prev) =>
       updateNode(prev, selectedId, (node) => {
         const changes = updater(node)
         if (Object.keys(changes).length === 0) return node
-        return { ...node, ...changes, ...(markDirty ? { dirty: true } : {}) }
+
+        return {
+          ...node,
+          ...changes,
+          ...(markDirty
+            ? {
+              dirty: true,
+              revision: (node.revision ?? 0) + 1,
+            }
+            : {}),
+        }
       })
     )
   }
 
-// Save the selected file to the backend before showing the save prompt.
-async function handleSave() {
-  if (!selectedNode?.dirty || savingFile) return
+  // Save the selected file to the backend before showing the save prompt.
+  async function handleSave() {
+    if (!selectedNode?.dirty || savingFile) return
 
-  const fileId = selectedNode.id
-  const saved = await commitSave()
+    const fileId = selectedNode.id
+    const saved = await commitSave()
 
-  // Do not show the prompt if saving failed.
-  if (!saved) return
+    // Do not show the prompt if saving failed.
+    if (!saved) return
 
-  if (skipSavePrompt) return
+    if (skipSavePrompt) return
 
-  setSavedFileId(fileId)
-  setSavePromptSkip(false)
-  setSavePromptOpen(true)
-}
-
-// Persist the file and clear its unsaved flag only after success.
-async function commitSave() {
-  if (!selectedNode?.dirty || savingFile) return false
-
-  setSavingFile(true)
-  setSaveError('')
-
-  try {
-    const user = auth.currentUser
-    const projectId = activeProject?.project_id
-
-    if (!user) {
-      throw new Error('Please sign in before saving this file.')
-    }
-
-    if (!projectId) {
-      throw new Error('Please select a project before saving this file.')
-    }
-
-    let response
-
-    // Use the database ID for saved files, not the local Workspace ID.
-    const existingResourceId =
-      selectedNode.resourceId ?? selectedNode.resource_id
-
-    if (existingResourceId) {
-      response = await updateWorkspaceFile(
-        user,
-        existingResourceId,
-        selectedNode
-      )
-    } else {
-      response = await createWorkspaceFile(
-        user,
-        projectId,
-        selectedNode
-      )
-    }
-
-    const resourceId =
-      response.file?.resource_id ??
-      response.file?.resourceId ??
-      response.file?.id ??
-      existingResourceId
-
-    if (!resourceId) {
-      throw new Error('The saved file did not return a database ID.')
-    }
-
-    const userName =
-      user.displayName || user.email || 'You'
-
-    setTree((prev) =>
-      updateNode(prev, selectedNode.id, (node) => ({
-        ...node,
-        resourceId,
-        dirty: false,
-      }))
-    )
-
-    setChanges((prev) => [
-      {
-        id: nextId(),
-        projectId,
-        action: 'modified',
-        user: userName,
-        fileId: selectedNode.id,
-        fileName: selectedNode.name,
-        timestamp: Date.now(),
-      },
-      ...prev,
-    ])
-
-    return true
-  } catch (error) {
-    setSaveError(error.message || 'Unable to save this file. Please try again.')
-    return false
-  } finally {
-    setSavingFile(false)
+    setSavedFileId(fileId)
+    setSavePromptSkip(false)
+    setSavePromptOpen(true)
   }
-}
+
+  // Persist the file and clear its unsaved flag only after success.
+  async function commitSave() {
+    if (!selectedNode?.dirty || savingFile) return false
+
+    setSavingFile(true)
+    setSaveError('')
+
+    try {
+      // Capture the submitted version so newer edits remain unsaved.
+      const savingRevision = selectedNode.revision ?? 0
+      const user = auth.currentUser
+      const projectId = activeProject?.project_id
+
+      if (!user) {
+        throw new Error('Please sign in before saving this file.')
+      }
+
+      if (!projectId) {
+        throw new Error('Please select a project before saving this file.')
+      }
+
+      let response
+
+      // Use the database ID for saved files, not the local Workspace ID.
+      const existingResourceId =
+        selectedNode.resourceId ?? selectedNode.resource_id
+
+      if (existingResourceId) {
+        response = await updateWorkspaceFile(
+          user,
+          existingResourceId,
+          selectedNode
+        )
+      } else {
+        response = await createWorkspaceFile(
+          user,
+          projectId,
+          selectedNode
+        )
+      }
+
+      const resourceId =
+        response.file?.resource_id ??
+        response.file?.resourceId ??
+        response.file?.id ??
+        existingResourceId
+
+      if (!resourceId) {
+        throw new Error('The saved file did not return a database ID.')
+      }
+
+      const userName =
+        user.displayName || user.email || 'You'
+
+      setTree((prev) =>
+        updateNode(prev, selectedNode.id, (node) => ({
+          ...node,
+          resourceId,
+          dirty: (node.revision ?? 0) !== savingRevision,
+        }))
+      )
+
+      setChanges((prev) => [
+        {
+          id: nextId(),
+          projectId,
+          action: 'modified',
+          user: userName,
+          fileId: selectedNode.id,
+          fileName: selectedNode.name,
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ])
+
+      return true
+    } catch (error) {
+      setSaveError(error.message || 'Unable to save this file. Please try again.')
+      return false
+    } finally {
+      setSavingFile(false)
+    }
+  }
 
   // "Don't ask me again" counts whichever button is clicked. Switch it back
   // on from the Settings page.
@@ -974,6 +1070,12 @@ async function commitSave() {
     } catch {
       // storage unavailable: the choice just lasts until reload
     }
+  }
+
+  // Dismiss the save prompt without opening the post composer.
+  function closeSavePrompt() {
+    rememberSavePromptChoice()
+    setSavePromptOpen(false)
   }
 
   // Return to File: just closes the prompt (the save already happened).
@@ -1119,14 +1221,17 @@ async function commitSave() {
     const count = countFilesOfType(tree, type) + 1
     const baseName = `Untitled ${typeInfo.label} ${count}`
     const name = type === 'code' ? `${baseName}.js` : `${baseName}${typeInfo.extension}`
-    // A brand-new file starts out unsaved so it can be posted to the feed.
-    const newNode = { ...buildEmptyFileNode(type, name), dirty: true }
 
-    let targetFolder = 'ROOT'
-    if (selectedNode) {
-      targetFolder =
-        selectedNode.type === 'folder' ? selectedNode.id : findParentId(tree, selectedNode.id) ?? 'ROOT'
+    // New files start unsaved; revision tracks subsequent edits.
+    const newNode = {
+      ...buildEmptyFileNode(type, name),
+      revision: 0,
+      dirty: true,
     }
+
+    // Place new files in their designated category folders,
+    // regardless of which file was previously selected.
+    const targetFolder = DEFAULT_FILE_FOLDERS[type] ?? 'ROOT'
 
     setTree((prev) => insertNode(prev, targetFolder, newNode))
     setChanges((prev) => [
@@ -1256,21 +1361,77 @@ async function commitSave() {
 
       const isSelected = selectedId === node.id
       const typeInfo = FILE_TYPES[node.type]
+      const isRenaming = renamingFileId === node.id
+
+      if (isRenaming) {
+        return (
+          <div
+            key={node.id}
+            className="workspace-tree-row workspace-tree-row--file is-selected"
+            style={{ paddingLeft: 10 + depth * 16 + 16 }}
+          >
+            <span className="workspace-tree-icon">
+              {typeInfo?.icon ?? ICONS.document}
+            </span>
+            <input
+              className="workspace-tree-rename-input"
+              type="text"
+              aria-label={`Rename ${node.name}`}
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  confirmRenameFile(node)
+                } else if (event.key === 'Escape') {
+                  setRenamingFileId(null)
+                  setRenameValue('')
+                }
+              }}
+              autoFocus
+            />
+            <span>{typeInfo?.extension}</span>
+          </div>
+        )
+      }
+
       return (
         <button
           key={node.id}
           type="button"
-          className={'workspace-tree-row workspace-tree-row--file' + (isSelected ? ' is-selected' : '')}
+          className={
+            'workspace-tree-row workspace-tree-row--file' +
+            (isSelected ? ' is-selected' : '')
+          }
           style={{ paddingLeft: 10 + depth * 16 + 16 }}
           onClick={() => selectNode(node.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'F2') {
+              event.preventDefault()
+              startRenamingFile(node)
+            }
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            selectNode(node.id)
+            startRenamingFile(node)
+          }}
         >
-          <span className="workspace-tree-icon">{typeInfo?.icon ?? ICONS.document}</span>
+          <span className="workspace-tree-icon">
+            {typeInfo?.icon ?? ICONS.document}
+          </span>
           <span className="workspace-tree-label">{node.name}</span>
           {node.dirty && (
-            <span className="workspace-tree-unsaved" title="Unsaved changes" aria-label="Unsaved changes" />
+            <span
+              className="workspace-tree-unsaved"
+              title="Unsaved changes"
+              aria-label="Unsaved changes"
+            />
           )}
-          {node.viewers?.length > 0 && <span className="workspace-tree-dot" aria-hidden="true" />}
+          {node.viewers?.length > 0 && (
+            <span className="workspace-tree-dot" aria-hidden="true" />
+          )}
         </button>
+
       )
     })
   }
@@ -1588,78 +1749,78 @@ async function commitSave() {
         </div>
 
         <div id="feed-panel" role="tabpanel" aria-labelledby={'feed-tab-' + feedView}>
-        {feedView === 'posts' ? (
-          projectPosts.length === 0 ? (
-            <p className="workspace-feed-empty">No posts yet. Click New Post to share an update with your team.</p>
-          ) : (
-            <div className="workspace-feed-posts">
-              {projectPosts.map((post) => (
-                <article key={post.id} className="workspace-feed-post">
-                  <header className="workspace-feed-post-head">
-                    {renderAvatar(post.user, post.avatarUrl)}
-                    <div className="workspace-feed-post-meta">
-                      <span className="workspace-feed-user">{post.user}</span>
-                      <time className="workspace-feed-post-time" dateTime={feedTimeAttr(post.timestamp)}>
-                        {formatFeedTime(post.timestamp)}
-                      </time>
-                    </div>
-                  </header>
+          {feedView === 'posts' ? (
+            projectPosts.length === 0 ? (
+              <p className="workspace-feed-empty">No posts yet. Click New Post to share an update with your team.</p>
+            ) : (
+              <div className="workspace-feed-posts">
+                {projectPosts.map((post) => (
+                  <article key={post.id} className="workspace-feed-post">
+                    <header className="workspace-feed-post-head">
+                      {renderAvatar(post.user, post.avatarUrl)}
+                      <div className="workspace-feed-post-meta">
+                        <span className="workspace-feed-user">{post.user}</span>
+                        <time className="workspace-feed-post-time" dateTime={feedTimeAttr(post.timestamp)}>
+                          {formatFeedTime(post.timestamp)}
+                        </time>
+                      </div>
+                    </header>
 
-                  {post.lines.length > 0 && (
-                    <div className="workspace-post-body">{renderRichLines(post.lines)}</div>
-                  )}
+                    {post.lines.length > 0 && (
+                      <div className="workspace-post-body">{renderRichLines(post.lines)}</div>
+                    )}
 
-                  {post.images.length > 0 && (
-                    <div
-                      className={'workspace-post-images' + (post.images.length === 1 ? ' is-single' : '')}
-                    >
-                      {post.images.map((image) => (
-                        <img key={image.id} className="workspace-post-image" src={image.url} alt={image.name} />
-                      ))}
-                    </div>
-                  )}
-
-                  {post.files.length > 0 && (
-                    <div className="workspace-post-files">
-                      <span className="workspace-post-files-label">Linked files</span>
-                      <ul className="workspace-post-files-list">
-                        {post.files.map((file) => (
-                          <li key={file.id}>{renderFeedFileLink(file.id, file.name)}</li>
+                    {post.images.length > 0 && (
+                      <div
+                        className={'workspace-post-images' + (post.images.length === 1 ? ' is-single' : '')}
+                      >
+                        {post.images.map((image) => (
+                          <img key={image.id} className="workspace-post-image" src={image.url} alt={image.name} />
                         ))}
-                      </ul>
-                    </div>
-                  )}
-                </article>
+                      </div>
+                    )}
+
+                    {post.files.length > 0 && (
+                      <div className="workspace-post-files">
+                        <span className="workspace-post-files-label">Linked files</span>
+                        <ul className="workspace-post-files-list">
+                          {post.files.map((file) => (
+                            <li key={file.id}>{renderFeedFileLink(file.id, file.name)}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )
+          ) : projectChanges.length === 0 ? (
+            <p className="workspace-feed-empty">No activity yet. Create or save a file to see it here.</p>
+          ) : (
+            <ul className="workspace-feed-changes">
+              {projectChanges.map((change) => (
+                <li key={change.id} className="workspace-feed-change">
+                  <span className="workspace-feed-change-text">
+                    <span className="workspace-feed-change-user">{change.user || 'Someone'}</span>
+                    <span
+                      className={
+                        'workspace-feed-change-action workspace-feed-change-action--' +
+                        (ACTIVITY_LABELS[change.action] ? change.action : 'modified')
+                      }
+                    >
+                      {activityLabel(change.action)}
+                    </span>
+                    <span className="workspace-feed-change-file">
+                      {renderFeedFileLink(change.fileId, change.fileName || 'Untitled file')}
+                    </span>
+                  </span>
+                  <time className="workspace-feed-change-time" dateTime={feedTimeAttr(change.timestamp)}>
+                    {formatFeedTime(change.timestamp)}
+                  </time>
+                </li>
               ))}
-            </div>
-          )
-        ) : projectChanges.length === 0 ? (
-          <p className="workspace-feed-empty">No activity yet. Create or save a file to see it here.</p>
-        ) : (
-          <ul className="workspace-feed-changes">
-            {projectChanges.map((change) => (
-              <li key={change.id} className="workspace-feed-change">
-                <span className="workspace-feed-change-text">
-                  <span className="workspace-feed-change-user">{change.user || 'Someone'}</span>
-                  <span
-                    className={
-                      'workspace-feed-change-action workspace-feed-change-action--' +
-                      (ACTIVITY_LABELS[change.action] ? change.action : 'modified')
-                    }
-                  >
-                    {activityLabel(change.action)}
-                  </span>
-                  <span className="workspace-feed-change-file">
-                    {renderFeedFileLink(change.fileId, change.fileName || 'Untitled file')}
-                  </span>
-                </span>
-                <time className="workspace-feed-change-time" dateTime={feedTimeAttr(change.timestamp)}>
-                  {formatFeedTime(change.timestamp)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        )}
+            </ul>
+          )}
         </div>
       </div>
     )
@@ -1836,7 +1997,7 @@ async function commitSave() {
             <span className="workspace-ribbon-launch-label">New Project</span>
           </button>
 
-          <div className="workspace-ribbon-new">
+          <div className="workspace-ribbon-new" ref={newFileMenuRef}>
             <button
               type="button"
               className="workspace-ribbon-launch-btn workspace-ribbon-launch-btn--file"
@@ -1886,6 +2047,7 @@ async function commitSave() {
                   aria-label="Active project"
                   value={activeProject?.project_id || ''}
                   onChange={handleProjectChange}
+                  disabled={savingFile}
                 >
                   {projects.map((project) => (
                     <option key={project.project_id} value={project.project_id}>
@@ -1931,15 +2093,15 @@ async function commitSave() {
                 className="workspace-ribbon-pill workspace-ribbon-pill--primary"
                 onClick={handleSave}
                 disabled={!(hasFile && selectedNode.dirty) || savingFile}
-title={
-  savingFile
-    ? 'Saving file...'
-    : hasFile && selectedNode.dirty
-      ? 'Save changes'
-      : 'No unsaved changes'
-}
->
-  {savingFile ? 'Saving...' : 'Save'}
+                title={
+                  savingFile
+                    ? 'Saving file...'
+                    : hasFile && selectedNode.dirty
+                      ? 'Save changes'
+                      : 'No unsaved changes'
+                }
+              >
+                {savingFile ? 'Saving...' : 'Save'}
               </button>
               <button
                 type="button"
@@ -1961,11 +2123,11 @@ title={
                 Feed
               </button>
             </div>
-{saveError && (
-  <p className="workspace-save-error" role="alert">
-    {saveError}
-  </p>
-)}
+            {saveError && (
+              <p className="workspace-save-error" role="alert">
+                {saveError}
+              </p>
+            )}
 
             <div className="workspace-ribbon-presence">
               {viewers.map((viewer) => (
