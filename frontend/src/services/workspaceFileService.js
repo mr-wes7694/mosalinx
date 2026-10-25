@@ -11,6 +11,24 @@ const FILE_CATEGORIES = {
   code: 'Source',
 }
 
+// Keep frontend-only state out of persisted editor content.
+function serializeWorkspaceContent(node) {
+  const content = { ...node }
+
+  for (const key of [
+    'id',
+    'type',
+    'dirty',
+    'revision',
+    'resourceId',
+    'resource_id',
+  ]) {
+    delete content[key]
+  }
+
+  return content
+}
+
 // Send authenticated requests to the Workspace file API.
 async function requestWorkspaceFile(user, path, options = {}) {
   if (!user) {
@@ -57,12 +75,7 @@ export async function createWorkspaceFile(user, projectId, node) {
     throw new Error('Unsupported Workspace file type.')
   }
 
-  const {
-    id,
-    type,
-    dirty,
-    ...content
-  } = node
+  const content = serializeWorkspaceContent(node)
 
   return requestWorkspaceFile(user, '', {
     method: 'POST',
@@ -84,12 +97,7 @@ export async function updateWorkspaceFile(user, resourceId, node) {
     throw new Error('Unsupported Workspace file type.')
   }
 
-  const {
-    id,
-    type,
-    dirty,
-    ...content
-  } = node
+  const content = serializeWorkspaceContent(node)
 
   return requestWorkspaceFile(user, `/${resourceId}`, {
     method: 'PUT',

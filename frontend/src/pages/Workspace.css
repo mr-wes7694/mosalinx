@@ -622,6 +622,24 @@
   text-overflow: ellipsis;
 }
 
+/* Inline filename editing within the Workspace explorer. */
+.workspace-tree-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid #0f8f96;
+  border-radius: 3px;
+  background: #fff;
+  color: #2a2c30;
+  font: inherit;
+  outline: none;
+}
+
+.workspace-tree-rename-input:focus {
+  border-color: #0f8f96;
+  box-shadow: 0 0 0 2px rgba(15, 143, 150, 0.12);
+}
+
 .workspace-tree-unsaved {
   flex-shrink: 0;
   width: 6px;
@@ -739,13 +757,14 @@
   box-shadow: inset 0 0 0 2px #14bbc4;
 }
 
-.workspace-sheet-cell {
+.workspace-page input.workspace-sheet-cell {
   width: 90px;
   box-sizing: border-box;
   border: none;
   outline: none;
   padding: 4px 6px;
   font-size: 0.8rem;
+  font-family: Arial, sans-serif;
   background: transparent;
   color: #1a1b1e;
 }
@@ -819,22 +838,25 @@
   min-height: 420px;
 }
 
-.workspace-slide-title {
+.workspace-page input.workspace-slide-title {
   border: none;
   outline: none;
   background: transparent;
   font-size: 1.4rem;
+  font-family: Arial, sans-serif;
   font-weight: 700;
   color: #1a1b1e;
 }
 
-.workspace-slide-body {
+.workspace-page textarea.workspace-slide-body {
   flex: 1;
   border: none;
   outline: none;
   resize: none;
   background: transparent;
   font-size: 0.95rem;
+  font-family: Arial, sans-serif;
+  font-weight: 400;
   line-height: 1.5;
   color: #2a2c30;
 }
@@ -866,7 +888,7 @@
   user-select: none;
 }
 
-.workspace-code-textarea {
+.workspace-page textarea.workspace-code-textarea {
   flex: 1;
   border: none;
   outline: none;
@@ -876,6 +898,7 @@
   color: #e4e4e6;
   font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
   font-size: 0.82rem;
+  font-weight: 400;
   line-height: 1.6;
   white-space: pre;
   overflow-wrap: normal;
