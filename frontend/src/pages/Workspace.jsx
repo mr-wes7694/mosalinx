@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
+import {
+  createWorkspaceFile,
+  updateWorkspaceFile,
+  listWorkspaceFiles,
+  getWorkspaceFile,
+} from '../services/workspaceFileService'
 import './Workspace.css'
 
 // ---------- Mock data / file-type definitions ----------
@@ -509,6 +515,24 @@ function feedTimeAttr(timestamp) {
   return toValidDate(timestamp)?.toISOString()
 }
 
+// Match saved Workspace file categories to their existing folders.
+const WORKSPACE_FOLDER_IDS = {
+  Documents: 'folder-docs',
+  Spreadsheets: 'folder-sheets',
+  Presentations: 'folder-slides',
+  Database: 'folder-db',
+  Source: 'folder-src',
+}
+
+// Match saved resource types to editor file types.
+const WORKSPACE_FILE_TYPES = {
+  workspace_document: 'document',
+  workspace_spreadsheet: 'spreadsheet',
+  workspace_presentation: 'presentation',
+  workspace_sql: 'sql',
+  workspace_code: 'code',
+}
+
 // ---------- Tree helpers (immutable) ----------
 
 function findNode(nodes, id) {
@@ -554,6 +578,38 @@ function insertNode(nodes, folderId, newNode) {
     }
     return node
   })
+}
+
+// Create the five standard folders and place saved files inside them.
+function buildWorkspaceTree(files) {
+  const tree = INITIAL_TREE.map((folder) => ({
+    ...folder,
+    children: [],
+  }))
+
+  for (const file of files) {
+    const type = WORKSPACE_FILE_TYPES[file.resource_type]
+    const folderId = WORKSPACE_FOLDER_IDS[file.category]
+
+    // Ignore unsupported file types or categories.
+    if (!type || !folderId) continue
+
+    const node = {
+      ...(file.content && typeof file.content === 'object' ? file.content : {}),
+      id: `workspace-${file.resource_id}`,
+      resourceId: file.resource_id,
+      name: file.resource_name,
+      type,
+      dirty: false,
+    }
+
+    const folder = tree.find((item) => item.id === folderId)
+    if (folder) {
+      folder.children.push(node)
+    }
+  }
+
+  return tree
 }
 
 // Every file in the tree (folders excluded), each with the name of the
@@ -623,6 +679,8 @@ function Workspace() {
   // clauses below. The file tree itself isn't backed by a project-scoped
   // endpoint yet, so it's seeded once here.
   const [tree, setTree] = useState(INITIAL_TREE)
+  const [savingFile, setSavingFile] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [expandedFolders, setExpandedFolders] = useState(
     () => new Set(['folder-docs', 'folder-sheets', 'folder-slides', 'folder-db', 'folder-src'])
   )
@@ -671,6 +729,51 @@ function Workspace() {
   const [newProjectDescription, setNewProjectDescription] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [createProjectError, setCreateProjectError] = useState('')
+  // Load saved Workspace files whenever the active project changes.
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProjectFiles() {
+      const projectId = activeProject?.project_id
+      const user = auth.currentUser
+
+      setSelectedId(null)
+      setSaveError('')
+
+      if (!projectId || !user) {
+        setTree(INITIAL_TREE)
+        return
+      }
+
+      try {
+        const result = await listWorkspaceFiles(user, projectId)
+        const savedFiles = await Promise.all(
+          (result.files ?? []).map(async (file) => {
+            const details = await getWorkspaceFile(user, file.resource_id)
+            return {
+              ...file,
+              ...(details.file ?? {}),
+            }
+          })
+        )
+
+        if (!cancelled) {
+          setTree(buildWorkspaceTree(savedFiles))
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSaveError(error.message || 'Unable to load Workspace files.')
+          setTree(buildWorkspaceTree([]))
+        }
+      }
+    }
+
+    loadProjectFiles()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.project_id])
 
   const handleProjectChange = (event) => {
     const selectedProject = projects.find(
@@ -762,21 +865,104 @@ function Workspace() {
     )
   }
 
-  // Clicking Save saves right away, then asks whether to make a post about it
-  // (unless the user chose "don't ask again").
-  function handleSave() {
-    if (!selectedNode?.dirty) return
-    const fileId = selectedNode.id
-    commitSave()
-    if (skipSavePrompt) return
-    setSavedFileId(fileId)
-    setSavePromptSkip(false)
-    setSavePromptOpen(true)
-  }
+// Save the selected file to the backend before showing the save prompt.
+async function handleSave() {
+  if (!selectedNode?.dirty || savingFile) return
 
-  function closeSavePrompt() {
-    setSavePromptOpen(false)
+  const fileId = selectedNode.id
+  const saved = await commitSave()
+
+  // Do not show the prompt if saving failed.
+  if (!saved) return
+
+  if (skipSavePrompt) return
+
+  setSavedFileId(fileId)
+  setSavePromptSkip(false)
+  setSavePromptOpen(true)
+}
+
+// Persist the file and clear its unsaved flag only after success.
+async function commitSave() {
+  if (!selectedNode?.dirty || savingFile) return false
+
+  setSavingFile(true)
+  setSaveError('')
+
+  try {
+    const user = auth.currentUser
+    const projectId = activeProject?.project_id
+
+    if (!user) {
+      throw new Error('Please sign in before saving this file.')
+    }
+
+    if (!projectId) {
+      throw new Error('Please select a project before saving this file.')
+    }
+
+    let response
+
+    // Use the database ID for saved files, not the local Workspace ID.
+    const existingResourceId =
+      selectedNode.resourceId ?? selectedNode.resource_id
+
+    if (existingResourceId) {
+      response = await updateWorkspaceFile(
+        user,
+        existingResourceId,
+        selectedNode
+      )
+    } else {
+      response = await createWorkspaceFile(
+        user,
+        projectId,
+        selectedNode
+      )
+    }
+
+    const resourceId =
+      response.file?.resource_id ??
+      response.file?.resourceId ??
+      response.file?.id ??
+      existingResourceId
+
+    if (!resourceId) {
+      throw new Error('The saved file did not return a database ID.')
+    }
+
+    const userName =
+      user.displayName || user.email || 'You'
+
+    setTree((prev) =>
+      updateNode(prev, selectedNode.id, (node) => ({
+        ...node,
+        resourceId,
+        dirty: false,
+      }))
+    )
+
+    setChanges((prev) => [
+      {
+        id: nextId(),
+        projectId,
+        action: 'modified',
+        user: userName,
+        fileId: selectedNode.id,
+        fileName: selectedNode.name,
+        timestamp: Date.now(),
+      },
+      ...prev,
+    ])
+
+    return true
+  } catch (error) {
+    setSaveError(error.message || 'Unable to save this file. Please try again.')
+    return false
+  } finally {
+    setSavingFile(false)
   }
+}
 
   // "Don't ask me again" counts whichever button is clicked. Switch it back
   // on from the Settings page.
@@ -802,19 +988,6 @@ function Workspace() {
     setSavePromptOpen(false)
     openComposer()
     if (savedFileId) setComposerFileIds([savedFileId])
-  }
-
-  // The save itself: the file's unsaved flag is cleared and an entry
-  // (file, user, time) goes into the Activity view.
-  function commitSave() {
-    if (!selectedNode?.dirty) return
-
-    const user = auth.currentUser?.displayName || auth.currentUser?.email || 'You'
-    setChanges((prev) => [
-      { id: nextId(), projectId: activeProject?.project_id ?? null, action: 'modified', user, fileId: selectedNode.id, fileName: selectedNode.name, timestamp: Date.now() },
-      ...prev,
-    ])
-    setTree((prev) => updateNode(prev, selectedNode.id, (node) => ({ ...node, dirty: false })))
   }
 
   // ---------- Post composer ----------
@@ -1757,10 +1930,16 @@ function Workspace() {
                 type="button"
                 className="workspace-ribbon-pill workspace-ribbon-pill--primary"
                 onClick={handleSave}
-                disabled={!(hasFile && selectedNode.dirty)}
-                title={hasFile && selectedNode.dirty ? 'Save changes' : 'No unsaved changes'}
-              >
-                Save
+                disabled={!(hasFile && selectedNode.dirty) || savingFile}
+title={
+  savingFile
+    ? 'Saving file...'
+    : hasFile && selectedNode.dirty
+      ? 'Save changes'
+      : 'No unsaved changes'
+}
+>
+  {savingFile ? 'Saving...' : 'Save'}
               </button>
               <button
                 type="button"
@@ -1782,6 +1961,11 @@ function Workspace() {
                 Feed
               </button>
             </div>
+{saveError && (
+  <p className="workspace-save-error" role="alert">
+    {saveError}
+  </p>
+)}
 
             <div className="workspace-ribbon-presence">
               {viewers.map((viewer) => (
