@@ -5,6 +5,7 @@ const pool = require('./config/database');
 const logger = require('./middleware/logger');
 const userRoutes = require('./routes/userRoutes');
 const resourceRoutes = require('./routes/resourceRoutes');
+const workspaceFileRoutes = require('./routes/workspaceFileRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const workspacePostRoutes = require('./routes/workspacePostRoutes');
 const calendarEventRoutes = require('./routes/calendarEventRoutes');
@@ -24,6 +25,7 @@ app.use('/api/workspace-posts', workspacePostRoutes);
 app.use('/api/calendar-events', calendarEventRoutes);
 app.use('/api/workspace-posts', commentRoutes);
 app.use('/api/invitations', invitationRoutes);
+app.use('/api/workspace-files', workspaceFileRoutes);
 
 app.get('/', (req, res) => {
     res.json({ message: 'Mosalinx backend is running!' });
