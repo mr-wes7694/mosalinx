@@ -23,6 +23,35 @@ const createActivityLog = async (
     return result.insertId;
 };
 
+// Retrieve the newest activity entries for a project.
+const findActivityLogsByProjectId = async (
+    projectId,
+    limit = 50
+) => {
+    const [rows] = await pool.query(
+        `SELECT
+            activity_logs.activity_id,
+            activity_logs.project_id,
+            activity_logs.user_id,
+            users.display_name,
+            users.profile_image_url,
+            activity_logs.activity_type,
+            activity_logs.activity_description,
+            activity_logs.created_at
+        FROM activity_logs
+        LEFT JOIN users
+            ON activity_logs.user_id = users.user_id
+        WHERE activity_logs.project_id = ?
+        ORDER BY activity_logs.created_at DESC,
+            activity_logs.activity_id DESC
+        LIMIT ?`,
+        [projectId, limit]
+    );
+
+    return rows;
+};
+
 module.exports = {
     createActivityLog,
+    findActivityLogsByProjectId,
 };
