@@ -33,7 +33,87 @@ function saveTiles(storageKey, tiles) {
   }
 }
 
-function Board({ storageKey }) {
+// The project title that heads the board. It doubles as a dropdown for
+// switching to any of the user's other projects.
+function ProjectSwitcher({ projects, activeProject, loading, error, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+  const listRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    function handlePointerDown(event) {
+      if (!wrapRef.current?.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [open])
+
+  const title = loading ? 'Loading projects…' : activeProject?.project_name || 'No project selected'
+  const canSwitch = !loading && projects.length > 0
+
+  // Escape closes; Up/Down move between projects.
+  function handleKeyDown(event) {
+    if (event.key === 'Escape') {
+      setOpen(false)
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const items = [...(listRef.current?.querySelectorAll('button') ?? [])]
+    if (items.length === 0) return
+    const index = items.indexOf(document.activeElement)
+    const step = event.key === 'ArrowDown' ? 1 : -1
+    items[(index + step + items.length) % items.length].focus()
+  }
+
+  return (
+    <h1 className="board-project" ref={wrapRef} onKeyDown={handleKeyDown}>
+      <button
+        type="button"
+        className="board-project-button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={!canSwitch}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="board-project-name">{title}</span>
+        {canSwitch && (
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        )}
+      </button>
+      {error && !loading && projects.length === 0 && <span className="board-project-error">{error}</span>}
+      {open && (
+        <ul ref={listRef} className="board-project-menu" role="listbox" aria-label="Switch project">
+          {projects.map((project) => {
+            const selected = project.project_id === activeProject?.project_id
+            return (
+              <li key={project.project_id} role="none">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={selected ? 'is-selected' : ''}
+                  onClick={() => {
+                    setOpen(false)
+                    if (!selected) onSelect(project)
+                  }}
+                >
+                  <span>{project.project_name}</span>
+                  {selected && <span aria-hidden="true">✓</span>}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </h1>
+  )
+}
+
+function Board({ storageKey, switcher }) {
   const [tiles, setTiles] = useState(() => loadTiles(storageKey))
   const [editingId, setEditingId] = useState(null)
   // What the tile looked like when editing began, so Cancel can put it back
@@ -176,7 +256,7 @@ function Board({ storageKey }) {
       <div className="board-frame">
         <div className="board-cork" onKeyDown={(event) => event.key === 'Escape' && setMenuOpen(false)}>
           <div className="board-toolbar">
-            <h1 className="board-sr-only">Bulletin board</h1>
+            {switcher}
             <div className="board-add">
               <button
                 type="button"
@@ -246,11 +326,21 @@ function Board({ storageKey }) {
 }
 
 function Dashboard() {
-  const { activeProject } = useProject()
+  const { projects, activeProject, setActiveProject, loadingProjects, projectError } = useProject()
   const projectKey = activeProject?.project_id ?? 'none'
 
+  const switcher = (
+    <ProjectSwitcher
+      projects={projects ?? []}
+      activeProject={activeProject}
+      loading={loadingProjects}
+      error={projectError}
+      onSelect={setActiveProject}
+    />
+  )
+
   // Keyed by project so switching projects loads that project's board.
-  return <Board key={projectKey} storageKey={`mosalinx.dashboard.${projectKey}`} />
+  return <Board key={projectKey} storageKey={`mosalinx.dashboard.${projectKey}`} switcher={switcher} />
 }
 
 export default Dashboard

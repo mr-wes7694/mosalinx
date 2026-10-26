@@ -67,22 +67,108 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 16px;
   margin-bottom: 26px;
 }
 
-/* Page heading for screen readers; the tab bar already names the page. */
-.board-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
+/* The project title: a paper label pinned to the cork that opens a project
+   list when clicked. */
+.board-project {
+  position: relative;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.board-project-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(60vw, 420px);
+  padding: 9px 16px;
+  border: none;
+  border-radius: 2px;
+  background: #fbf7ec;
+  color: #3b2a1a;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  transform: rotate(-1deg);
+  cursor: pointer;
+}
+
+.board-project-button:disabled {
+  cursor: default;
+}
+
+.board-project-button:not(:disabled):hover {
+  background: #fffdf5;
+}
+
+.board-project-button:focus-visible,
+.board-project-menu button:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 2px;
+}
+
+.board-project-name {
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  text-overflow: ellipsis;
   white-space: nowrap;
-  border: 0;
+}
+
+.board-project-error {
+  display: block;
+  margin-top: 6px;
+  color: #fbf7ec;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.board-project-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  min-width: 240px;
+  max-width: 340px;
+  max-height: 320px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+  background: #fbf7ec;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.board-project-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #2a1d12;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-project-menu button:hover {
+  background: rgba(20, 187, 196, 0.16);
+}
+
+.board-project-menu button.is-selected {
+  font-weight: 700;
+  color: #0c6f75;
 }
 
 .board-add {
