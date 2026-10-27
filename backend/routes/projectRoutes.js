@@ -9,6 +9,10 @@ const {
     getProjectMembers,
 } = require('../controllers/projectController');
 
+const {
+    getProjectActivity,
+} = require('../controllers/activityLogController');
+
 const { verifyFirebaseToken } = require('../middleware');
 
 const router = express.Router();
@@ -37,6 +41,13 @@ router.get(
     '/:projectId/members',
     verifyFirebaseToken,
     getProjectMembers
+);
+
+// Get activity entries for a project member.
+router.get(
+    '/:projectId/activity',
+    verifyFirebaseToken,
+    getProjectActivity
 );
 
 module.exports = router;
