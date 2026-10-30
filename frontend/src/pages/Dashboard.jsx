@@ -123,6 +123,7 @@ function Board({ storageKey, switcher }) {
   const [columns, setColumns] = useState(6)
   const [dragPreview, setDragPreview] = useState(null) // { id, x, y }
   const fieldRef = useRef(null)
+  const addRef = useRef(null)
 
   // Every tile with a valid spot for the current width. Saved spots are kept
   // whenever they are still free.
@@ -131,6 +132,16 @@ function Board({ storageKey, switcher }) {
   useEffect(() => {
     saveTiles(storageKey, tiles)
   }, [storageKey, tiles])
+
+  // Clicking anywhere outside the Add tile menu closes it.
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    function handlePointerDown(event) {
+      if (!addRef.current?.contains(event.target)) setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [menuOpen])
 
   // As many whole grid cells as fit across the board.
   useEffect(() => {
@@ -257,7 +268,7 @@ function Board({ storageKey, switcher }) {
         <div className="board-cork" onKeyDown={(event) => event.key === 'Escape' && setMenuOpen(false)}>
           <div className="board-toolbar">
             {switcher}
-            <div className="board-add">
+            <div className="board-add" ref={addRef}>
               <button
                 type="button"
                 className="board-add-button"
