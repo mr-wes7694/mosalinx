@@ -93,6 +93,7 @@
 }
 
 .workspace-ribbon-main {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -262,6 +263,103 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Make the selected filename discoverably editable without disrupting the ribbon. */
+.workspace-ribbon-rename-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.workspace-ribbon-rename-button:hover {
+  background: rgba(20, 187, 196, 0.08);
+  border-color: rgba(20, 187, 196, 0.25);
+}
+
+.workspace-ribbon-rename-button:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 1px;
+}
+
+.workspace-ribbon-rename-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.workspace-ribbon-rename-button>span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-ribbon-rename-pencil {
+  flex-shrink: 0;
+  color: #7c858a;
+  font-size: 0.95rem;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.workspace-ribbon-rename-button:hover .workspace-ribbon-rename-pencil,
+.workspace-ribbon-rename-button:focus-visible .workspace-ribbon-rename-pencil {
+  color: #0d929b;
+  opacity: 1;
+}
+
+/* Keep the file extension visible and outside the editable filename. */
+.workspace-ribbon-rename {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: #4a4d52;
+  position: relative;
+}
+
+.workspace-ribbon-rename-input {
+  width: 150px;
+  min-width: 65px;
+  max-width: 200px;
+  padding: 4px 6px;
+  border: 1px solid #14bbc4;
+  border-radius: 4px;
+  background: #fff;
+  color: #1a1b1e;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.workspace-ribbon-rename-input:focus {
+  outline: 2px solid rgba(20, 187, 196, 0.2);
+  outline-offset: 1px;
+}
+
+/* Display subtle filename validation feedback beneath the rename field. */
+.workspace-ribbon-rename-error {
+  align-self: flex-start;
+  margin-left: 180px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(235, 45, 55, 0.85);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Reserve a separate row for filename validation feedback. */
+.workspace-ribbon-main:has(.workspace-ribbon-rename-error) {
+  row-gap: 4px;
 }
 
 .workspace-ribbon-tabdivider {
@@ -1177,7 +1275,7 @@ button.workspace-feed-file:hover {
   font-size: 0.82rem;
 }
 
-.workspace-feed-change + .workspace-feed-change {
+.workspace-feed-change+.workspace-feed-change {
   border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 
