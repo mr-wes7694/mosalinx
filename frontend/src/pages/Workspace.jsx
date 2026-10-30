@@ -4,6 +4,7 @@ import { auth } from '../firebase'
 import {
   createWorkspaceFile,
   updateWorkspaceFile,
+  renameWorkspaceFile,
   listWorkspaceFiles,
   getWorkspaceFile,
 } from '../services/workspaceFileService'
@@ -685,9 +686,16 @@ function Workspace() {
   )
   // No file is selected on load, so the feed is the landing screen.
   const [selectedId, setSelectedId] = useState(null)
-  // Track the file currently being renamed in the explorer.
+  // Share filename editing state between the file tree and Workspace toolbar.
   const [renamingFileId, setRenamingFileId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
+  const [renameSource, setRenameSource] = useState(null)
+  // Keep filename validation feedback separate from general Workspace save errors.
+  const [renameError, setRenameError] = useState('')
+  // Prevent overlapping rename submissions from keyboard and blur events.
+  const renameSubmittingRef = useRef(false)
+  // Track intentional cancellation so blur does not save the filename.
+  const renameCancelRef = useRef(false)
   const [newFileMenuOpen, setNewFileMenuOpen] = useState(false)
   // Reference the New File menu for outside-click dismissal.
   const newFileMenuRef = useRef(null)
@@ -891,8 +899,13 @@ function Workspace() {
     })
   }
 
-  // Start renaming a file while keeping its extension protected.
-  function startRenamingFile(node) {
+  // Start renaming from either the file tree or toolbar, protecting the extension.
+  function startRenamingFile(node, source = 'tree') {
+    if (savingFile) return
+
+    // Clear any cancellation from a previous rename attempt.
+    renameCancelRef.current = false
+
     const extension = FILE_TYPES[node.type]?.extension ?? ''
     const baseName = node.name.endsWith(extension)
       ? node.name.slice(0, -extension.length)
@@ -900,29 +913,75 @@ function Workspace() {
 
     setRenamingFileId(node.id)
     setRenameValue(baseName)
+    setRenameSource(source)
+    setRenameError('')
+    setSaveError('')
   }
 
-  // Apply the new filename and mark the file as unsaved.
-  function confirmRenameFile(node) {
-    const baseName = renameValue.trim()
-    if (!baseName) return
+  // Rename a file using the existing API while preserving unsaved editor changes.
+  async function confirmRenameFile(node) {
+    // Ignore duplicate submissions while a rename request is in progress.
+    if (renameSubmittingRef.current) return
+    renameSubmittingRef.current = true
+    try {
 
-    const extension = FILE_TYPES[node.type]?.extension ?? ''
-    const newName = `${baseName}${extension}`
+      const baseName = renameValue.trim()
+      const extension = FILE_TYPES[node.type]?.extension ?? ''
 
-    if (newName !== node.name) {
+      if (!baseName) {
+        setRenameError('Please enter a filename.')
+        return
+      }
+
+      const newName = `${baseName}${extension}`
+
+      if (newName === node.name) {
+        setRenamingFileId(null)
+        setRenameValue('')
+        setRenameSource(null)
+        return
+      }
+
+      const resourceId = node.resourceId ?? node.resource_id
+
+      if (resourceId) {
+        const user = auth.currentUser
+
+        if (!user) {
+          setRenameError('Please sign in before renaming this file.')
+          return
+        }
+
+        try {
+          setSavingFile(true)
+          setSaveError('')
+
+          // Update filename metadata without rewriting Firebase Storage content.
+          await renameWorkspaceFile(user, resourceId, newName)
+        } catch (error) {
+          setRenameError(error.message || 'Unable to rename this file.')
+          return
+        } finally {
+          setSavingFile(false)
+        }
+      }
+
+      // Preserve the current dirty state for saved files with unsaved edits.
       setTree((prev) =>
         updateNode(prev, node.id, (current) => ({
           ...current,
           name: newName,
-          dirty: true,
+          dirty: resourceId ? current.dirty : true,
           revision: (current.revision ?? 0) + 1,
         }))
       )
-    }
 
-    setRenamingFileId(null)
-    setRenameValue('')
+      setRenamingFileId(null)
+      setRenameValue('')
+      setRenameSource(null)
+    } finally {
+      renameSubmittingRef.current = false
+    }
   }
 
   function selectNode(id) {
@@ -1361,7 +1420,7 @@ function Workspace() {
 
       const isSelected = selectedId === node.id
       const typeInfo = FILE_TYPES[node.type]
-      const isRenaming = renamingFileId === node.id
+      const isRenaming = renamingFileId === node.id && renameSource === 'tree'
 
       if (isRenaming) {
         return (
@@ -1381,10 +1440,13 @@ function Workspace() {
               onChange={(event) => setRenameValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
+                  event.preventDefault()
                   confirmRenameFile(node)
                 } else if (event.key === 'Escape') {
+                  event.preventDefault()
                   setRenamingFileId(null)
                   setRenameValue('')
+                  setRenameSource(null)
                 }
               }}
               autoFocus
@@ -2060,7 +2122,58 @@ function Workspace() {
               {hasFile && (
                 <>
                   <span className="workspace-ribbon-context-sep">/</span>
-                  <span className="workspace-ribbon-context-file">{selectedNode.name}</span>
+
+                  {renamingFileId === selectedNode.id && renameSource === 'toolbar' ? (
+                    <>
+                      <span className="workspace-ribbon-rename">
+                        <input
+                          className="workspace-ribbon-rename-input"
+                          type="text"
+                          aria-label={`Rename ${selectedNode.name}`}
+                          value={renameValue}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          onBlur={() => {
+                            if (renameCancelRef.current) {
+                              renameCancelRef.current = false
+                              return
+                            }
+
+                            if (!savingFile && !renameSubmittingRef.current) {
+                              confirmRenameFile(selectedNode)
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              confirmRenameFile(selectedNode)
+                            } else if (event.key === 'Escape') {
+                              event.preventDefault()
+                              renameCancelRef.current = true
+                              setRenamingFileId(null)
+                              setRenameValue('')
+                              setRenameSource(null)
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <span>{FILE_TYPES[selectedNode.type]?.extension}</span>
+                      </span>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="workspace-ribbon-context-file workspace-ribbon-rename-button"
+                      onClick={() => startRenamingFile(selectedNode, 'toolbar')}
+                      disabled={savingFile}
+                      title="Click to rename file"
+                      aria-label={`Rename ${selectedNode.name}`}
+                    >
+                      <span>{selectedNode.name}</span>
+                      <span className="workspace-ribbon-rename-pencil" aria-hidden="true">
+                        ✎
+                      </span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -2145,6 +2258,12 @@ function Workspace() {
               ))}
             </div>
           </div>
+
+          {renameSource === 'toolbar' && renameError && (
+            <span className="workspace-ribbon-rename-error" role="alert">
+              {renameError}
+            </span>
+          )}
 
           <div
             className={'workspace-ribbon-tools-wrap' + (ribbonDisabled ? ' is-disabled' : '')}

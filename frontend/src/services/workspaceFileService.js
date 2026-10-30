@@ -109,6 +109,14 @@ export async function updateWorkspaceFile(user, resourceId, node) {
   })
 }
 
+// Rename an existing Workspace file without rewriting its stored contents.
+export async function renameWorkspaceFile(user, resourceId, name) {
+  return requestWorkspaceFile(user, `/${resourceId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name }),
+  })
+}
+
 // Retrieve saved files for the active project.
 export async function listWorkspaceFiles(user, projectId) {
   return requestWorkspaceFile(user, `/project/${projectId}`)
