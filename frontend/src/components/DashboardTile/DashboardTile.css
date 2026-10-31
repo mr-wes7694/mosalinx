@@ -1,0 +1,676 @@
+/* ---------- Tile: sticky note / thumb-tacked paper ---------- */
+
+.tile {
+  --paper: #fbf7ec;
+  --ink: #2b2118;
+  --accent: #2b6f77;
+  --ink-soft: color-mix(in srgb, var(--ink) 68%, transparent);
+  --ink-line: color-mix(in srgb, var(--ink) 28%, transparent);
+  --ring: var(--paper);
+  /* left / top / width / height are set inline from the board grid. */
+  position: absolute;
+  cursor: grab;
+  touch-action: pan-y;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  padding: 26px 16px 18px;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 2px;
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.18),
+    0 6px 10px rgba(30, 16, 6, 0.38);
+}
+
+.tile:hover,
+.tile:focus-within,
+.tile.is-editing,
+.tile.is-dragging {
+  z-index: 10;
+  box-shadow:
+    0 2px 2px rgba(0, 0, 0, 0.2),
+    0 12px 20px rgba(30, 16, 6, 0.5);
+}
+
+/* Paper colors (sticky notes and pinned paper). */
+.tile-c--yellow { --paper: #fff1a0; --accent: #8a6a00; }
+.tile-c--pink   { --paper: #ffc9dc; --accent: #a02a5c; }
+.tile-c--blue   { --paper: #bfe1fb; --accent: #1e5f94; }
+.tile-c--green  { --paper: #cdeebf; --accent: #2f6b2a; }
+.tile-c--cream  { --paper: #fbf7ec; --accent: #2b6f77; }
+
+/* Sticky note: a curled lower-right corner. */
+.tile--sticky {
+  padding-top: 20px;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0, transparent 22px);
+}
+
+.tile--sticky::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(315deg, rgba(0, 0, 0, 0.14) 0 50%, rgba(255, 255, 255, 0.45) 50% 100%);
+  box-shadow: -3px -3px 6px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+/* On the board: no paper at all, the content looks written on the cork. 
+   A soft outline shows up on hover so the tile can still
+   be found, moved and resized. */
+.tile--plain {
+  --paper: transparent;
+  --ring: transparent;
+  padding: 14px 12px 12px;
+  background: none;
+  box-shadow: none;
+  border-radius: 6px;
+  outline: 2px dashed transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.12s ease;
+}
+
+.tile--plain:hover,
+.tile--plain:focus-within,
+.tile--plain.is-dragging,
+.tile--plain.is-resizing {
+  box-shadow: none;
+  outline-color: rgba(251, 247, 236, 0.55);
+}
+
+.tile--plain.is-editing {
+  outline-color: rgba(251, 247, 236, 0.7);
+}
+
+/* While editing, the fields on an "On the board" tile are see-through and use
+   the chosen ink, so changing the ink changes the text you are typing right
+   away. */
+.tile--plain.is-editing .tile-edit-field input,
+.tile--plain.is-editing .tile-edit-field textarea {
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  border-color: var(--ink-line);
+  color: var(--ink);
+}
+
+.tile--plain.is-editing .tile-edit-field select {
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1b1e;
+}
+
+.tile--plain.is-editing .tile-edit-field input:focus,
+.tile--plain.is-editing .tile-edit-field textarea:focus {
+  outline-color: var(--ink);
+}
+
+/* Ink colors for tiles written directly on the board. The cork is a mid-tone,
+   so the inks are the extremes. */
+.tile--plain.tile-c--black  { --ink: #050302; --accent: #050302; }
+.tile--plain.tile-c--navy   { --ink: #060f26; --accent: #060f26; }
+.tile--plain.tile-c--red    { --ink: #3a0603; --accent: #3a0603; }
+.tile--plain.tile-c--white  { --ink: #ffffff; --accent: #ffffff; }
+.tile--plain.tile-c--yellow { --ink: #fffbe0; --accent: #fffbe0; }
+
+.tile--plain {
+  --ink-soft: var(--ink);
+  --ink-line: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+
+.tile--plain {
+  font-weight: 600;
+}
+
+.tile--plain .tile-title {
+  font-weight: 800;
+}
+
+.tile:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 3px;
+}
+
+.tile.is-dragging {
+  cursor: grabbing;
+  opacity: 0.92;
+  user-select: none;
+}
+
+.tile.is-editing {
+  cursor: default;
+}
+
+.tile-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/* Thumb tack. */
+.tile-pin {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff8a7a 0 12%, #d6362a 45%, #8f1d14 100%);
+  box-shadow:
+    2px 4px 4px rgba(0, 0, 0, 0.45),
+    inset -1px -1px 2px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.tile-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.tile-title {
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+  padding-right: 4px;
+  font-size: calc(var(--tile-font, 14px) * 1.12);
+  font-weight: 700;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  font-size: var(--tile-font, 14px);
+  line-height: 1.45;
+}
+
+.tile-empty {
+  margin: 0;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.tile-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive, system-ui;
+  font-size: 1.08em;
+}
+
+/* ---- controls (appear on hover / keyboard focus) ---- */
+
+.tile-controls {
+  position: absolute;
+  top: -14px;
+  right: 6px;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: #2b1a0e;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.tile:hover .tile-controls,
+.tile:focus-within .tile-controls,
+.tile.is-menu-open .tile-controls,
+.tile.is-editing .tile-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tile-controls > button {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #fbf7ec;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tile-controls > button:hover:not(:disabled),
+.tile-controls > button.is-active {
+  background: rgba(20, 187, 196, 0.45);
+}
+
+.tile-controls > button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tile-controls button:focus-visible,
+.tile-resize:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 1px;
+}
+
+/* ---- drag handle (bottom-right corner) ---- */
+
+.tile-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0;
+  background:
+    linear-gradient(135deg, transparent 0 50%, var(--ink-soft) 50% 56%, transparent 56% 66%, var(--ink-soft) 66% 72%, transparent 72%);
+  transition: opacity 0.12s ease;
+}
+
+.tile:hover .tile-resize,
+.tile.is-dragging .tile-resize {
+  opacity: 1;
+}
+
+/* ---- graph ---- */
+
+.tile-graph {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 90px;
+  margin: 0;
+  color: var(--accent);
+}
+
+.tile-graph-caption {
+  margin-bottom: 6px;
+  font-size: 0.85em;
+  color: var(--ink-soft);
+}
+
+.tile-graph-plot {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 50px;
+  border-bottom: 1.5px solid var(--ink-line);
+}
+
+.tile-graph-plot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.tile-graph-plot--bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.tile-graph-bar-col {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+}
+
+.tile-graph-value {
+  margin-bottom: 2px;
+  font-size: 0.77em;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.tile-graph-bar {
+  border-radius: 2px 2px 0 0;
+  background: currentColor;
+  opacity: 0.82;
+}
+
+.tile-graph-dots {
+  position: absolute;
+  inset: 0;
+}
+
+.tile-graph-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: 0 0 -4px -4px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.tile-graph-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 0.77em;
+  color: var(--ink-soft);
+}
+
+/* ---- calendar ---- */
+
+.tile-calendar-date {
+  margin: 0 0 8px;
+  font-size: 0.89em;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.tile-calendar-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile-calendar-list li {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--ink-line);
+}
+
+.tile-calendar-time {
+  flex: 0 0 auto;
+  min-width: 58px;
+  font-size: 0.89em;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.tile-calendar-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---- project post ---- */
+
+.tile-post-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-bottom: 6px;
+}
+
+.tile-post-head time {
+  font-size: 0.82em;
+  color: var(--ink-soft);
+}
+
+.tile-post-body p {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.tile-post-body strong { font-weight: 700; }
+.tile-post-body em { font-style: italic; }
+.tile-post-body u { text-decoration: underline; }
+
+.tile-post-files {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tile-post-files li {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  font-size: 0.82em;
+}
+
+/* ---- edit panel ---- */
+
+.tile-edit {
+  font-size: 0.88rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tile-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.tile-edit-field input,
+.tile-edit-field textarea,
+.tile-edit-field select {
+  padding: 6px 8px;
+  border: 1px solid rgba(43, 33, 24, 0.35);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #1a1b1e;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color-scheme: light;
+}
+
+.tile-edit-field textarea {
+  resize: vertical;
+}
+
+.tile-edit-field input:focus,
+.tile-edit-field textarea:focus,
+.tile-edit-field select:focus {
+  outline: 2px solid #14bbc4;
+  outline-offset: 1px;
+}
+
+.tile-edit-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.tile-edit-style {
+  padding: 4px 10px;
+  border: 1px solid rgba(43, 33, 24, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #2b2118;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.tile-edit-style:hover {
+  border-color: #14bbc4;
+}
+
+.tile-edit-style.is-selected {
+  background: #14bbc4;
+  border-color: #14bbc4;
+  color: #000000;
+  font-weight: 600;
+}
+
+.tile-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid rgba(43, 33, 24, 0.3);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tile-swatch--yellow { background: #fff1a0; }
+.tile-swatch--pink   { background: #ffc9dc; }
+.tile-swatch--blue   { background: #bfe1fb; }
+.tile-swatch--green  { background: #cdeebf; }
+.tile-swatch--cream  { background: #fbf7ec; }
+.tile-swatch--black  { background: #1c130b; }
+.tile-swatch--white  { background: #ffffff; }
+.tile-swatch--navy   { background: #14264a; }
+.tile-swatch--red    { background: #8f1d14; }
+
+.tile-swatch.is-selected {
+  border-color: #14bbc4;
+  box-shadow: 0 0 0 2px rgba(20, 187, 196, 0.35);
+}
+
+/* ---- delete button and its "Delete?" prompt ---- */
+
+.tile-controls > button.tile-delete {
+  background: #c0392b;
+  border-radius: 5px;
+}
+
+.tile-controls > button.tile-delete:hover:not(:disabled),
+.tile-controls > button.tile-delete.is-active {
+  background: #e04b3a;
+}
+
+.tile-delete-prompt {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  min-width: 150px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbf7ec;
+  color: #2b2118;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-shadow: none;
+  text-align: left;
+  cursor: default;
+  box-shadow: 0 10px 26px rgba(30, 16, 6, 0.5);
+}
+
+.tile-delete-prompt p {
+  margin: 0 0 8px;
+}
+
+.tile-delete-prompt-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tile-delete-prompt button {
+  padding: 5px 12px;
+  border: 1px solid rgba(43, 33, 24, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #2b2118;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tile-delete-prompt .tile-delete-yes {
+  border-color: #c0392b;
+  background: #c0392b;
+  color: #ffffff;
+}
+
+.tile-delete-prompt .tile-delete-yes:hover {
+  background: #a93226;
+}
+
+.tile-delete-prompt .tile-delete-no:hover {
+  border-color: #14bbc4;
+}
+
+/* ---- style dropdown (paint brush) ---- */
+
+.tile-controls > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile-style-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  width: 230px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: #fbf7ec;
+  color: #2b2118;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.3;
+  text-shadow: none;
+  text-align: left;
+  cursor: default;
+  box-shadow: 0 10px 26px rgba(30, 16, 6, 0.5);
+}
+
+.tile-style-menu-label {
+  margin: 0 0 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(43, 33, 24, 0.65);
+}
+
+.tile-style-menu-options,
+.tile-style-menu-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tile-style-menu-swatches {
+  margin-bottom: 0;
+}
+
+.tile-style-menu-size {
+  align-items: center;
+}
+
+.tile-style-menu-readout {
+  min-width: 38px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-style-menu .tile-edit-style:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .tile-controls,
+  .tile-resize {
+    transition: none;
+  }
+}

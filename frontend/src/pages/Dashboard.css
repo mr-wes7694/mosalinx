@@ -1,0 +1,281 @@
+/* ---------- Bulletin board: wooden frame + cork ---------- */
+
+/* The Shell pads its content area and doesn't give it a fixed height, so for
+   this page the content area drops its padding and becomes a flex box. The
+   board then fills the whole space under the top bar and only scrolls when
+   the tiles run past it. */
+.shell-content:has(.dashboard-page) {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.dashboard-page {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 0 auto;
+  width: 100%;
+  padding: 14px;
+  background: #2b1a0e;
+  font-family: system-ui, sans-serif;
+}
+
+/* Dark brown wooden frame. */
+.board-frame {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: 22px;
+  border-radius: 6px;
+  /* Soft wood grain from stretched noise, over a smooth
+     dark-brown gradient. */
+  background-color: #3f2514;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='700' height='500'><filter id='g' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='0.004 0.09' numOctaves='4' seed='5' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.10  0 0 0 0 0.05  0 0 0 0 0.02  0 0 0 0.9 -0.32'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='400'><filter id='h' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='0.006 0.14' numOctaves='3' seed='12' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.62  0 0 0 0 0.40  0 0 0 0 0.22  0 0 0 0.6 -0.26'/></filter><rect width='100%' height='100%' filter='url(%23h)'/></svg>"),
+    linear-gradient(135deg, #5b3920 0%, #402614 50%, #4f301b 100%);
+  background-size: 700px 500px, 600px 400px, auto;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 220, 170, 0.18),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.45),
+    0 6px 22px rgba(0, 0, 0, 0.5);
+}
+
+/* Speckled dark-tan cork: flecks at several sizes over a mottled base. */
+.board-cork {
+  position: relative;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 22px 28px 40px;
+  border-radius: 3px;
+  background-color: #a07148;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='d' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2' seed='11' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.20  0 0 0 0 0.11  0 0 0 0 0.04  0 0 0 9 -5.2'/></filter><rect width='100%' height='100%' filter='url(%23d)'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='l' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' seed='23' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.76  0 0 0 0 0.57  0 0 0 0 0.35  0 0 0 4.5 -2.9'/></filter><rect width='100%' height='100%' filter='url(%23l)'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='m' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='0.03' numOctaves='3' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.2  0 0 0 0 0.08  0 0 0 1.1 -0.35'/></filter><rect width='100%' height='100%' filter='url(%23m)'/></svg>");
+  background-size: 300px 300px, 260px 260px, 240px 240px;
+  box-shadow:
+    inset 0 0 0 2px rgba(40, 22, 10, 0.55),
+    inset 0 10px 22px rgba(30, 16, 6, 0.45),
+    inset 0 -6px 14px rgba(30, 16, 6, 0.25);
+}
+
+.board-toolbar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+/* The project title: a paper label pinned to the cork that opens a project
+   list when clicked. */
+.board-project {
+  position: relative;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.board-project-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(60vw, 420px);
+  padding: 9px 16px;
+  border: none;
+  border-radius: 2px;
+  background: #fbf7ec;
+  color: #3b2a1a;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  transform: rotate(-1deg);
+  cursor: pointer;
+}
+
+.board-project-button:disabled {
+  cursor: default;
+}
+
+.board-project-button:not(:disabled):hover {
+  background: #fffdf5;
+}
+
+.board-project-button:focus-visible,
+.board-project-menu button:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 2px;
+}
+
+.board-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-project-error {
+  display: block;
+  margin-top: 6px;
+  color: #fbf7ec;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.board-project-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  min-width: 240px;
+  max-width: 340px;
+  max-height: 320px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+  background: #fbf7ec;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.board-project-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #2a1d12;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-project-menu button:hover {
+  background: rgba(20, 187, 196, 0.16);
+}
+
+.board-project-menu button.is-selected {
+  font-weight: 700;
+  color: #0c6f75;
+}
+
+.board-add {
+  position: relative;
+}
+
+.board-add-button {
+  padding: 9px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #14bbc4;
+  color: #000000;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.board-add-button:hover {
+  opacity: 0.88;
+}
+
+.board-add-button:focus-visible,
+.board-add-menu button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.board-add-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: 250px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fbf7ec;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.board-add-menu button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #2a1d12;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-add-menu button:hover {
+  background: rgba(20, 187, 196, 0.16);
+}
+
+.board-add-menu span {
+  font-size: 0.78rem;
+  color: #6b5a49;
+}
+
+.board-field {
+  width: 100%;
+}
+
+/* Tiles are positioned on this canvas by grid cell. */
+.board-canvas {
+  position: relative;
+  max-width: 100%;
+}
+
+/* Shows where a dragged tile will land. */
+.board-ghost {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed rgba(251, 247, 236, 0.75);
+  border-radius: 4px;
+  background: rgba(251, 247, 236, 0.14);
+  pointer-events: none;
+}
+
+.board-empty {
+  margin: 40px 0 0;
+  text-align: center;
+  color: #fbf7ec;
+  font-size: 0.95rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 720px) {
+  .dashboard-page {
+    padding: 8px;
+  }
+
+  .board-frame {
+    padding: 12px;
+  }
+
+  .board-cork {
+    padding: 16px 14px 32px;
+  }
+
+  .board-toolbar {
+    flex-wrap: wrap;
+  }
+}
