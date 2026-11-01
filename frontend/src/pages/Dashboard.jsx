@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import DashboardTile from '../components/DashboardTile/DashboardTile.jsx'
-import { fits, firstFree, nearestFree, resolveLayout } from '../components/DashboardTile/layout.js'
+import { fits, firstFree, nearestFree, resolveLayout } from '../components/DashboardTile/Layout.js'
 import { CELL, GAP, TILE_TYPES, createTile, sanitizeTile } from '../components/DashboardTile/tileConfig.js'
 import './Dashboard.css'
 
