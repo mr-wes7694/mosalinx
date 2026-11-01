@@ -71,6 +71,20 @@ const ITEMS = [
       </svg>
     ),
   },
+
+  {
+    id: 'team-members',
+    label: 'Team Members',
+    path: '/dashboard/team-members',
+    icon: (
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3 20v-2a6 6 0 0 1 12 0v2" />
+        <path d="M16 5a3 3 0 0 1 0 6" />
+        <path d="M18 14a5 5 0 0 1 3 5v1" />
+      </svg>
+    ),
+  },
 ]
 
 const VERTICAL_POSITIONS = ['left', 'right']

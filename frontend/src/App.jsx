@@ -12,6 +12,7 @@ import Resources from './pages/Resources.jsx'
 import Workspace from './pages/Workspace.jsx'
 import Settings from './pages/Settings.jsx'
 import Profile from './pages/Profile.jsx'
+import TeamMembers from './pages/TeamMembers.jsx'
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
         <Route path="statistics" element={<Statistics />} />
         <Route path="resources" element={<Resources />} />
         <Route path="workspace" element={<Workspace />} />
+        <Route path="team-members" element={<TeamMembers />} />
       </Route>
 
       <Route
