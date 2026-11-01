@@ -14,6 +14,7 @@ const APP_NAMES = {
   '/dashboard/statistics': 'Statistics',
   '/dashboard/resources': 'Resources',
   '/dashboard/workspace': 'Workspace',
+  '/dashboard/team-members': 'Team Members',
 }
 
 function Shell() {
