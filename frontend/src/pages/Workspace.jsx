@@ -10,12 +10,10 @@ import {
 } from '../services/workspaceFileService'
 import './Workspace.css'
 
-// ---------- Mock data / file-type definitions ----------
-// No workspace backend exists yet, so the
-// file tree, file contents, and "who else is viewing" presence are all local
-// state seeded with sample data. Swapping in real persistence later means
-// replacing the useState seeds below with fetched data.
-// Editor logic doesn't need to change.
+// ---------- Workspace data / file-type definitions ----------
+// Workspace files are persisted through the backend and Firebase Storage.
+// Sample data remains available for local UI features such as activity
+// posts and presence indicators.
 
 let idSeed = 1000
 function nextId() {
@@ -343,69 +341,437 @@ function serializeEditor(root) {
   return lines
 }
 
-// The text of a document file as formatted lines. Older/seed files only have
-// plain `content`, so those are converted on the fly.
-function documentLines(node) {
-  return node.lines ?? plainLines(node.content ?? '')
+// Identify the paragraph or list containing a document selection.
+function getDocumentBlockFormat(node, editor) {
+  const element = node?.nodeType === Node.TEXT_NODE
+    ? node.parentElement
+    : node
+
+  if (!element || !editor?.contains(element)) {
+    return { paragraphStyle: null, listType: null }
+  }
+
+  const block = element.closest('h1, h2, li, div, p')
+  const list = element.closest('ul, ol')
+
+  if (list && editor.contains(list)) {
+    return {
+      paragraphStyle: null,
+      listType: list.tagName === 'UL' ? 'bullet' : 'numbered',
+    }
+  }
+
+  return {
+    paragraphStyle:
+      block?.tagName === 'H1' ? 'heading1' :
+        block?.tagName === 'H2' ? 'heading2' : 'normal',
+    listType: null,
+  }
 }
 
-// Rich-text editor for document files. Bold/italic/underline apply to the
-// selected text (or to what you type next), like Word. The browser owns the
-// editable DOM while you type; every change is read back into plain `lines`
-// data (see serializeEditor), so nothing is ever stored or rendered as HTML.
-function DocumentEditor({ lines, align, onChange, onFormatsChange }) {
-  const editorRef = useRef(null)
+// Read the effective font family and size at a document text position.
+function getDocumentFontFormat(node, editor) {
+  const element = node?.nodeType === Node.TEXT_NODE
+    ? node.parentElement
+    : node
+
+  if (!element || !editor?.contains(element)) {
+    return { fontFamily: '', fontSize: '' }
+  }
+
+  const style = window.getComputedStyle(element)
+
+  const family = style.fontFamily
+    .split(',')[0]
+    .trim()
+    .replace(/^["']|["']$/g, '')
+
+  const sizePx = Number.parseFloat(style.fontSize)
+  const sizePt = Number.isFinite(sizePx)
+    ? Math.round(sizePx * 0.75)
+    : null
+
+  return {
+    fontFamily: family,
+    fontSize: sizePt === null ? '' : String(sizePt),
+  }
+}
+
+// Compare font formatting across all text included in a selection.
+function getDocumentSelectionFontFormat(selection, editor) {
+  if (!selection || !editor || selection.rangeCount === 0) {
+    return { fontFamily: '', fontSize: '' }
+  }
+
+  const range = selection.getRangeAt(0)
+
+  // A cursor without highlighted text uses its current formatting.
+  if (range.collapsed) {
+    return getDocumentFontFormat(range.startContainer, editor)
+  }
+
+  const families = new Set()
+  const sizes = new Set()
+
+  // Examine only text nodes that overlap the highlighted range.
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode
+
+    if (!node.textContent || !range.intersectsNode(node)) continue
+
+    const nodeRange = document.createRange()
+    nodeRange.selectNodeContents(node)
+
+    const startsBeforeNode = range.compareBoundaryPoints(
+      Range.START_TO_START,
+      nodeRange
+    ) <= 0
+
+    const endsAfterNode = range.compareBoundaryPoints(
+      Range.END_TO_END,
+      nodeRange
+    ) >= 0
+
+    const start = startsBeforeNode ? 0 : range.startOffset
+    const end = endsAfterNode ? node.textContent.length : range.endOffset
+
+    if (end <= start) continue
+
+    const format = getDocumentFontFormat(node, editor)
+    families.add(format.fontFamily)
+    sizes.add(format.fontSize)
+  }
+
+  return {
+    fontFamily: families.size === 1 ? [...families][0] : '',
+    fontSize: sizes.size === 1 ? [...sizes][0] : '',
+  }
+}
+
+// Serialize document formatting independently from Activity Feed posts.
+// Preserve paragraph styles, list items, and inline formatting.
+function serializeDocumentEditor(root) {
+  const lines = []
+
+  function collectRuns(node, style, runs) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.replace(/\u00A0/g, ' ')
+      if (text) runs.push({ text, ...style })
+      return
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const tag = node.tagName
+    if (tag === 'BR') return
+
+    const next = { ...style }
+
+    if (tag === 'B' || tag === 'STRONG') next.bold = true
+    if (tag === 'I' || tag === 'EM') next.italic = true
+    if (tag === 'U') next.underline = true
+
+    // Read browser-generated inline styles and font elements.
+    const weight = node.style.fontWeight
+    if (weight === 'bold' || Number(weight) >= 600) next.bold = true
+    if (node.style.fontStyle === 'italic') next.italic = true
+
+    if (
+      (node.style.textDecorationLine ||
+        node.style.textDecoration ||
+        '').includes('underline')
+    ) {
+      next.underline = true
+    }
+
+    const fontFamily = node.style.fontFamily ||
+      (tag === 'FONT' ? node.getAttribute('face') : null)
+
+    if (fontFamily) {
+      next.fontFamily = fontFamily.replace(/^["']|["']$/g, '')
+    }
+
+    const fontSize = node.style.fontSize
+    if (fontSize) {
+      const parsedSize = Number.parseFloat(fontSize)
+
+      if (Number.isFinite(parsedSize)) {
+        if (fontSize.endsWith('px')) {
+          next.fontSize = Math.round(parsedSize * 0.75)
+        } else if (fontSize.endsWith('pt')) {
+          next.fontSize = parsedSize
+        }
+      }
+    }
+
+    // execCommand('fontSize') can produce legacy FONT elements.
+    if (tag === 'FONT' && node.hasAttribute('size')) {
+      const legacySizes = {
+        1: 8,
+        2: 10,
+        3: 12,
+        4: 14,
+        5: 18,
+        6: 24,
+        7: 36,
+      }
+
+      const legacySize = node.getAttribute('size')
+      if (legacySizes[legacySize]) {
+        next.fontSize = legacySizes[legacySize]
+      }
+    }
+
+    node.childNodes.forEach((child) => collectRuns(child, next, runs))
+  }
+
+  // Store each paragraph or list item as one structured line.
+  function addParagraph(node, type = 'normal') {
+    const runs = []
+    collectRuns(node, {}, runs)
+
+    lines.push({
+      type,
+      runs,
+    })
+  }
+
+  function walkBlocks(node) {
+    // Preserve text entered directly into the editor root.
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.replace(/\u00A0/g, ' ')
+      if (text.trim()) {
+        lines.push({
+          type: 'normal',
+          runs: [{ text }],
+        })
+      }
+      return
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const tag = node.tagName
+
+    if (tag === 'UL' || tag === 'OL') {
+      const type = tag === 'UL' ? 'bullet' : 'numbered'
+
+      Array.from(node.children).forEach((item) => {
+        if (item.tagName === 'LI') {
+          addParagraph(item, type)
+        }
+      })
+      return
+    }
+
+    if (tag === 'H1') {
+      addParagraph(node, 'heading1')
+      return
+    }
+
+    if (tag === 'H2') {
+      addParagraph(node, 'heading2')
+      return
+    }
+
+    // Process lists nested inside paragraph wrappers before saving them.
+    if (tag === 'DIV' || tag === 'P') {
+      const nestedLists = Array.from(node.children).filter(
+        (child) => child.tagName === 'UL' || child.tagName === 'OL'
+      )
+
+      if (nestedLists.length > 0) {
+        node.childNodes.forEach(walkBlocks)
+        return
+      }
+
+      addParagraph(node, node.dataset.paragraphType ?? 'normal')
+      return
+    }
+
+    if (tag === 'LI') {
+      addParagraph(node, node.dataset.paragraphType ?? 'normal')
+      return
+    }
+
+    // Handle unexpected wrappers without discarding their text.
+    if (node.children.length > 0) {
+      const hasBlocks = Array.from(node.children).some((child) =>
+        ['DIV', 'P', 'H1', 'H2', 'UL', 'OL', 'LI'].includes(child.tagName)
+      )
+
+      if (hasBlocks) {
+        node.childNodes.forEach(walkBlocks)
+        return
+      }
+    }
+
+    addParagraph(node)
+  }
+
+  root.childNodes.forEach(walkBlocks)
+
+  return lines.length > 0
+    ? lines
+    : [{ type: 'normal', runs: [] }]
+}
+
+
+// Normalize document lines so older files remain compatible with
+// paragraph formatting introduced for headings and lists.
+function documentLines(node) {
+  const lines = node.lines ?? plainLines(node.content ?? '')
+
+  return lines.map((line) => {
+    if (Array.isArray(line)) {
+      return {
+        type: 'normal',
+        runs: line,
+      }
+    }
+
+    return {
+      type: line.type ?? 'normal',
+      runs: Array.isArray(line.runs) ? line.runs : [],
+    }
+  })
+}
+
+// Rich-text document editor supporting inline formatting, paragraph styles,
+// lists, and font controls. The browser manages the editable DOM while typing;
+// serializeDocumentEditor converts changes into structured lines for persistence.
+function DocumentEditor({ lines, align, onChange, onFormatsChange, editorRef, onSelectionChange }) {
   const initialLines = useRef(lines)
 
-  // Build the starting DOM once per file (the editor is keyed by file id).
+
+  // Reconstruct saved document formatting when a file is opened.
+  // Consecutive list items share a list container.
   useEffect(() => {
     const root = editorRef.current
     if (!root) return
+
     root.textContent = ''
-    initialLines.current.forEach((runs) => {
-      const row = document.createElement('div')
-      runs.forEach((run) => {
+
+    let currentList = null
+    let currentListType = null
+
+    initialLines.current.forEach((line) => {
+      const type = line.type ?? 'normal'
+      let row
+
+      if (type === 'bullet' || type === 'numbered') {
+        const listTag = type === 'bullet' ? 'ul' : 'ol'
+
+        if (!currentList || currentListType !== type) {
+          currentList = document.createElement(listTag)
+          root.appendChild(currentList)
+          currentListType = type
+        }
+
+        row = document.createElement('li')
+        currentList.appendChild(row)
+      } else {
+        currentList = null
+        currentListType = null
+
+        const tag =
+          type === 'heading1' ? 'h1' :
+            type === 'heading2' ? 'h2' : 'div'
+
+        row = document.createElement(tag)
+        root.appendChild(row)
+      }
+
+      line.runs.forEach((run) => {
         if (!run.text) return
+
         let node = document.createTextNode(run.text)
+
         if (run.underline) {
           const wrap = document.createElement('u')
           wrap.appendChild(node)
           node = wrap
         }
+
         if (run.italic) {
           const wrap = document.createElement('em')
           wrap.appendChild(node)
           node = wrap
         }
+
         if (run.bold) {
           const wrap = document.createElement('strong')
           wrap.appendChild(node)
           node = wrap
         }
+
+        // Restore font properties without affecting unrelated styles.
+        if (run.fontFamily || run.fontSize) {
+          const span = document.createElement('span')
+
+          if (run.fontFamily) {
+            span.style.fontFamily = run.fontFamily
+          }
+
+          if (run.fontSize) {
+            span.style.fontSize = `${run.fontSize}pt`
+          }
+
+          span.appendChild(node)
+          node = span
+        }
+
         row.appendChild(node)
       })
-      if (!row.firstChild) row.appendChild(document.createElement('br'))
-      root.appendChild(row)
-    })
-  }, [])
 
-  // Keep the ribbon's B / I / U highlighting in step with the cursor.
+      if (!row.firstChild) {
+        row.appendChild(document.createElement('br'))
+      }
+    })
+  }, [editorRef])
+
+
+  // Keep the ribbon formatting state and saved document selection synchronized.
   useEffect(() => {
     function handleSelectionChange() {
       const selection = document.getSelection()
       if (!selection || !editorRef.current?.contains(selection.anchorNode)) return
-      onFormatsChange({
+
+      onSelectionChange()
+
+      // Identify the paragraph style and list type at the cursor.
+      const blockFormat = getDocumentBlockFormat(
+        selection.anchorNode,
+        editorRef.current
+      )
+
+      // Read the entire selection so mixed fonts and sizes display as blank.
+      const fontFormat = getDocumentSelectionFontFormat(
+        selection,
+        editorRef.current
+      )
+
+      onFormatsChange((previous) => ({
+        ...previous,
         bold: document.queryCommandState('bold'),
         italic: document.queryCommandState('italic'),
         underline: document.queryCommandState('underline'),
-      })
+        paragraphStyle: blockFormat.paragraphStyle,
+        listType: blockFormat.listType,
+        fontFamily: fontFormat.fontFamily,
+        fontSize: fontFormat.fontSize,
+      }))
     }
     document.addEventListener('selectionchange', handleSelectionChange)
     return () => document.removeEventListener('selectionchange', handleSelectionChange)
-  }, [onFormatsChange])
+  }, [editorRef, onFormatsChange, onSelectionChange])
 
+  // Save document edits using the document-specific formatting structure.
   function handleInput() {
-    onChange(serializeEditor(editorRef.current))
+    if (!editorRef.current) return
+    onChange(serializeDocumentEditor(editorRef.current))
   }
 
   // Paste as plain text so outside formatting can't sneak into the file.
@@ -666,12 +1032,6 @@ function Workspace() {
     setActiveProject,
     loadingProjects,
     projectError,
-    // Not implemented on the backend/provider yet — this is a placeholder
-    // contract for the backend dev to fill in: createProject({ project_name,
-    // description }) should create the project, add it to `projects`, and
-    // set it as the active project (see handleCreateProject below for the
-    // exact shape this file calls it with). Until then this is undefined and
-    // the "New Project..." form shows a friendly error instead of crashing.
     createProject,
   } = useProject()
 
@@ -686,19 +1046,26 @@ function Workspace() {
   )
   // No file is selected on load, so the feed is the landing screen.
   const [selectedId, setSelectedId] = useState(null)
+
   // Share filename editing state between the file tree and Workspace toolbar.
   const [renamingFileId, setRenamingFileId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameSource, setRenameSource] = useState(null)
+
   // Keep filename validation feedback separate from general Workspace save errors.
   const [renameError, setRenameError] = useState('')
+
   // Prevent overlapping rename submissions from keyboard and blur events.
   const renameSubmittingRef = useRef(false)
+
   // Track intentional cancellation so blur does not save the filename.
   const renameCancelRef = useRef(false)
+
   const [newFileMenuOpen, setNewFileMenuOpen] = useState(false)
+
   // Reference the New File menu for outside-click dismissal.
   const newFileMenuRef = useRef(null)
+
   // Close the New File menu when clicking outside or pressing Escape.
   useEffect(() => {
     if (!newFileMenuOpen) return
@@ -734,11 +1101,13 @@ function Workspace() {
   const [posts, setPosts] = useState(INITIAL_POSTS)
   const [changes, setChanges] = useState(INITIAL_CHANGES)
   const [composerOpen, setComposerOpen] = useState(false)
+
   // Save prompt: asks whether a save should also become a post. "Don't ask
   // again" is remembered in this browser only.
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [savePromptSkip, setSavePromptSkip] = useState(false)
   const [savedFileId, setSavedFileId] = useState(null)
+
   // Read from localStorage when the page loads, so changing it on the Settings
   // page takes effect next time Workspace opens.
   const [skipSavePrompt, setSkipSavePrompt] = useState(() => {
@@ -749,13 +1118,30 @@ function Workspace() {
     }
   })
   const [composerEmpty, setComposerEmpty] = useState(true)
-  // Bold/italic/underline state at the cursor in the open document.
-  const [docFormats, setDocFormats] = useState({ bold: false, italic: false, underline: false })
+
+  // Track formatting at the document selection for ribbon highlighting.
+  const [docFormats, setDocFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    fontFamily: 'Calibri',
+    fontSize: '11',
+    paragraphStyle: 'normal',
+    listType: null,
+  })
+
   const [composerFormats, setComposerFormats] = useState({ bold: false, italic: false, underline: false })
   const [composerImages, setComposerImages] = useState([])
   const [composerFileIds, setComposerFileIds] = useState([])
   const [composerPickerOpen, setComposerPickerOpen] = useState(false)
   const [composerError, setComposerError] = useState('')
+
+  // Share the active document editor with the ribbon formatting controls.
+  const documentEditorRef = useRef(null)
+
+  // Preserve the document selection while interacting with ribbon controls.
+  const documentSelectionRef = useRef(null)
+
   const composerEditorRef = useRef(null)
   const composerImageInputRef = useRef(null)
 
@@ -1317,16 +1703,122 @@ function Workspace() {
 
   // ---------- Ribbon tool actions ----------
 
-  // Applies to the selected text in the document. onMouseDown + preventDefault
-  // keeps the selection from being lost when the ribbon button is clicked.
-  function applyDocFormat(event, command) {
-    event.preventDefault()
-    document.execCommand(command)
-    setDocFormats((prev) => ({ ...prev, [command]: document.queryCommandState(command) }))
+  // Remember the selected document text before ribbon controls take focus.
+  function saveDocumentSelection() {
+    const editor = documentEditorRef.current
+    const selection = window.getSelection()
+
+    if (!editor || !selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+
+    if (
+      editor.contains(range.startContainer) &&
+      editor.contains(range.endContainer)
+    ) {
+      documentSelectionRef.current = range.cloneRange()
+    }
   }
 
+  // Restore the saved document selection before applying ribbon formatting.
+  function restoreDocumentSelection() {
+    const editor = documentEditorRef.current
+    const range = documentSelectionRef.current
+
+    if (!editor || !range) return false
+
+    if (
+      !editor.contains(range.startContainer) ||
+      !editor.contains(range.endContainer)
+    ) {
+      documentSelectionRef.current = null
+      return false
+    }
+
+    const selection = window.getSelection()
+    if (!selection) return false
+
+    selection.removeAllRanges()
+    selection.addRange(range.cloneRange())
+    editor.focus()
+
+    return true
+  }
+
+  // Apply formatting to the active document selection and save the result.
+  function applyDocFormat(event, command) {
+    event.preventDefault()
+
+    if (!restoreDocumentSelection()) return
+
+    document.execCommand(command, false, null)
+
+    const editor = documentEditorRef.current
+    if (!editor) return
+
+    setDocumentLines(serializeDocumentEditor(editor))
+
+    setDocFormats((prev) => ({
+      ...prev,
+      [command]: document.queryCommandState(command),
+    }))
+
+    saveDocumentSelection()
+  }
+
+  // Apply a ribbon formatting command to the saved document selection.
+  function applyDocumentRibbonCommand(command, value) {
+    if (!restoreDocumentSelection()) return
+
+    document.execCommand(command, false, value)
+
+    const editor = documentEditorRef.current
+    if (!editor) return
+
+    setDocumentLines(serializeDocumentEditor(editor))
+    saveDocumentSelection()
+  }
+
+  // Apply an exact point size to the selected document text.
+  function applyDocumentFontSize(size) {
+    if (!restoreDocumentSelection()) return
+
+    const editor = documentEditorRef.current
+    if (!editor) return
+
+    const pointSize = Number(size)
+    if (![9, 11, 14, 18].includes(pointSize)) return
+
+    // Record existing legacy font elements so they are not modified.
+    const existingFonts = new WeakSet(
+      editor.querySelectorAll('font[size="7"]')
+    )
+
+    // Use a temporary legacy size to identify the affected text.
+    document.execCommand('fontSize', false, '7')
+
+    editor.querySelectorAll('font[size="7"]').forEach((font) => {
+      if (existingFonts.has(font)) return
+      const span = document.createElement('span')
+      span.style.fontSize = `${pointSize}pt`
+
+      while (font.firstChild) {
+        span.appendChild(font.firstChild)
+      }
+
+      font.replaceWith(span)
+    })
+
+    setDocumentLines(serializeDocumentEditor(editor))
+    saveDocumentSelection()
+  }
+
+  // Update document content and preserve structured paragraph formatting.
   function setDocumentLines(lines) {
-    const content = lines.map((runs) => runs.map((run) => run.text).join('')).join('\n')
+    const content = lines
+      .map((line) => line.runs.map((run) => run.text).join(''))
+      .join('\n')
+
     updateSelectedFile(() => ({ lines, content }))
   }
 
@@ -1498,13 +1990,9 @@ function Workspace() {
     })
   }
 
-  // A ribbon "group" is Office's unit of organization: a cluster of related
-  // buttons with a small caption underneath (e.g. "Font", "Paragraph",
-  // "Clipboard"). Most groups below mix real, wired-up controls (Bold/Align,
-  // cell formatting, slide management, Run) with purely decorative ones
-  // (Paste/Cut/Copy, font-name pickers, style galleries) that exist to sell
-  // the authentic Office look — those are plain buttons with no onClick, so
-  // they're visually present but inert rather than faking functionality.
+  // Ribbon groups organize related controls under captions such as Font,
+  // Paragraph, and Clipboard. Document formatting controls are interactive,
+  // while unsupported actions remain visual placeholders.
 
   function RibbonButton({ active, big, onClick, children, ...rest }) {
     return (
@@ -1556,12 +2044,28 @@ function Workspace() {
           <>
             <ClipboardGroup />
             <RibbonGroup caption="Font">
-              <select className="workspace-ribbon-select" defaultValue="Calibri">
+              <select
+                className="workspace-ribbon-select"
+                value={docFormats.fontFamily}
+                onMouseDown={saveDocumentSelection}
+                onChange={(event) => {
+                  applyDocumentRibbonCommand('fontName', event.target.value)
+                }}
+              >
+                <option value="" disabled />
                 <option>Calibri</option>
                 <option>Arial</option>
                 <option>Times New Roman</option>
               </select>
-              <select className="workspace-ribbon-select workspace-ribbon-select--narrow" defaultValue="11">
+              <select
+                className="workspace-ribbon-select workspace-ribbon-select--narrow"
+                value={docFormats.fontSize}
+                onMouseDown={saveDocumentSelection}
+                onChange={(event) => {
+                  applyDocumentFontSize(event.target.value)
+                }}
+              >
+                <option value="" disabled />
                 <option>9</option>
                 <option>11</option>
                 <option>14</option>
@@ -1608,13 +2112,66 @@ function Workspace() {
                   {align === 'right' && '⟹'}
                 </RibbonButton>
               ))}
-              <RibbonButton>• ≡</RibbonButton>
-              <RibbonButton>1. ≡</RibbonButton>
+              <RibbonButton
+                active={docFormats.listType === 'bullet'}
+                aria-pressed={docFormats.listType === 'bullet'}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  applyDocumentRibbonCommand('insertUnorderedList', null)
+                }}
+                title="Bulleted List"
+              >
+                • ≡
+              </RibbonButton>
+
+              <RibbonButton
+                active={docFormats.listType === 'numbered'}
+                aria-pressed={docFormats.listType === 'numbered'}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  applyDocumentRibbonCommand('insertOrderedList', null)
+                }}
+                title="Numbered List"
+              >
+                1. ≡
+              </RibbonButton>
             </RibbonGroup>
             <RibbonGroup caption="Styles">
-              <RibbonButton big>Normal</RibbonButton>
-              <RibbonButton big>Heading 1</RibbonButton>
-              <RibbonButton big>Heading 2</RibbonButton>
+              <RibbonButton
+                big
+                active={docFormats.paragraphStyle === 'normal'}
+                aria-pressed={docFormats.paragraphStyle === 'normal'}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  applyDocumentRibbonCommand('formatBlock', 'div')
+                }}
+              >
+                Normal
+              </RibbonButton>
+
+              <RibbonButton
+                big
+                active={docFormats.paragraphStyle === 'heading1'}
+                aria-pressed={docFormats.paragraphStyle === 'heading1'}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  applyDocumentRibbonCommand('formatBlock', 'h1')
+                }}
+              >
+                Heading 1
+              </RibbonButton>
+
+              <RibbonButton
+                big
+                active={docFormats.paragraphStyle === 'heading2'}
+                aria-pressed={docFormats.paragraphStyle === 'heading2'}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  applyDocumentRibbonCommand('formatBlock', 'h2')
+                }}
+              >
+                Heading 2
+              </RibbonButton>
             </RibbonGroup>
           </>
         )
@@ -1922,6 +2479,8 @@ function Workspace() {
               align={selectedNode.align}
               onChange={setDocumentLines}
               onFormatsChange={setDocFormats}
+              editorRef={documentEditorRef}
+              onSelectionChange={saveDocumentSelection}
             />
           </div>
         )

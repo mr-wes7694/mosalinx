@@ -520,15 +520,22 @@
 .workspace-ribbon-btn--big {
   flex-direction: column;
   gap: 2px;
-  padding: 6px 10px;
-  height: 52px;
+  padding: 5px 9px;
+  height: 32px;
   font-size: 0.72rem;
 }
 
+/* Highlight active ribbon controls with a subtle Mosalinx teal tint. */
 .workspace-ribbon-btn.is-active {
-  background: var(--ribbon-accent, #14bbc4);
-  border-color: var(--ribbon-accent, #14bbc4);
-  color: #ffffff;
+  background: rgba(20, 187, 196, 0.13);
+  border-color: rgba(20, 187, 196, 0.3);
+  color: #087f87;
+  font-weight: 600;
+}
+
+.workspace-ribbon-btn.is-active:hover {
+  background: rgba(20, 187, 196, 0.2);
+  border-color: rgba(20, 187, 196, 0.45);
 }
 
 .workspace-ribbon-btn--run {
