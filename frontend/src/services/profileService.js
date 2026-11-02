@@ -62,3 +62,64 @@ export async function updateUserProfile(user, updates) {
 
   return data.user
 }
+
+// Upload a profile picture through the authenticated backend endpoint.
+export async function uploadUserAvatar(user, file) {
+  if (!user || !file) {
+    throw new Error('An authenticated user and image file are required')
+  }
+
+  const token = await user.getIdToken()
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let response
+
+  try {
+    response = await fetch(`${PROFILE_URL}/avatar`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    })
+  } catch {
+    throw new Error('Unable to upload your profile picture. Please try again later.')
+  }
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to upload profile picture')
+  }
+
+  return data.user
+}
+
+// Retrieve a saved profile picture as an authenticated image blob.
+export async function getUserAvatar(user, userId) {
+  if (!user || !Number.isSafeInteger(Number(userId)) || Number(userId) <= 0) {
+    throw new Error('An authenticated user and valid user ID are required')
+  }
+
+  const token = await user.getIdToken()
+
+  let response
+
+  try {
+    response = await fetch(`${API_BASE_URL}/api/users/${userId}/avatar`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: 'no-store',
+    })
+  } catch {
+    throw new Error('Unable to load the profile picture.')
+  }
+
+  if (!response.ok) {
+    throw new Error('Failed to retrieve profile picture')
+  }
+
+  return response.blob()
+}
