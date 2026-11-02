@@ -1,202 +1,191 @@
 const {
-    findUserByEmail,
-    findUserByFirebaseUid,
-    updateUserProfileByFirebaseUid,
-    createUser
+  findUserByEmail,
+  findUserByFirebaseUid,
+  updateUserProfileByFirebaseUid,
+  createUser
 } = require('../models/userModel');
 
 // Register a new Mosalinx user after Firebase account creation.
 const registerUser = async (req, res) => {
-    const { displayName, email } = req.body || {};
+  const { displayName, email } = req.body || {};
 
-    // Firebase middleware provides the authenticated user's UID.
-    const firebaseUid = req.user?.uid;
+  // Firebase middleware provides the authenticated user's UID.
+  const firebaseUid = req.user?.uid;
 
-    // Make sure the request is authenticated.
-    if (!firebaseUid) {
-        return res.status(401).json({
-            message: 'Unauthorized.',
-        });
+  // Make sure the request is authenticated.
+  if (!firebaseUid) {
+    return res.status(401).json({
+      message: 'Unauthorized.',
+    });
+  }
+
+  // Make sure the required registration information was provided.
+  if (!email) {
+    return res.status(400).json({
+      message: 'Email is required.',
+    });
+  }
+
+  try {
+    // Check whether this Firebase account is already registered.
+    const existingFirebaseUser = await findUserByFirebaseUid(firebaseUid);
+
+    if (existingFirebaseUser) {
+      return res.status(409).json({
+        message: 'User is already registered.',
+        userId: existingFirebaseUser.user_id,
+      });
     }
 
-    // Make sure the required registration information was provided.
-    if (!email) {
-        return res.status(400).json({
-            message: 'Email is required.',
-        });
+    // Check whether the email is already being used.
+    const existingEmailUser = await findUserByEmail(email);
+
+    if (existingEmailUser) {
+      return res.status(409).json({
+        message: 'Email is already registered.',
+      });
     }
 
-    try {
-        // Check whether this Firebase account is already registered.
-        const existingFirebaseUser = await findUserByFirebaseUid(firebaseUid);
+    // Create the MySQL user linked to the Firebase account.
+    const user = await createUser(
+      firebaseUid,
+      displayName || null,
+      email
+    );
 
-        if (existingFirebaseUser) {
-            return res.status(409).json({
-                message: 'User is already registered.',
-                userId: existingFirebaseUser.user_id,
-            });
-        }
+    return res.status(201).json({
+      message: 'User registered successfully.',
+      user,
+    });
+  } catch (error) {
+    console.error('Error registering user:', error);
 
-        // Check whether the email is already being used.
-        const existingEmailUser = await findUserByEmail(email);
-
-        if (existingEmailUser) {
-            return res.status(409).json({
-                message: 'Email is already registered.',
-            });
-        }
-
-        // Create the MySQL user linked to the Firebase account.
-        const user = await createUser(
-            firebaseUid,
-            displayName || null,
-            email
-        );
-
-        return res.status(201).json({
-            message: 'User registered successfully.',
-            user,
-        });
-    } catch (error) {
-        console.error('Error registering user:', error);
-
-        return res.status(500).json({
-            message: 'Failed to register user.',
-        });
-    }
+    return res.status(500).json({
+      message: 'Failed to register user.',
+    });
+  }
 };
 
 // Retrieve the authenticated user's Mosalinx profile.
 const getUserProfile = async (req, res) => {
-    try {
-        const user = await findUserByFirebaseUid(req.user.uid);
+  try {
+    const user = await findUserByFirebaseUid(req.user.uid);
 
-        if (!user) {
-            return res.status(404).json({
-                message: 'User profile not found'
-            });
-        }
-
-        return res.status(200).json({
-            user: {
-                userId: user.user_id,
-                displayName: user.display_name,
-                email: user.email,
-                profileImageUrl: user.profile_image_url,
-                bio: user.bio,
-                createdAt: user.created_at,
-                updatedAt: user.updated_at,
-            }
-        });
-    } catch (error) {
-        console.error('Error retrieving user profile:', error.message);
-
-        return res.status(500).json({
-            message: 'Internal server error'
-        });
+    if (!user) {
+      return res.status(404).json({
+        message: 'User profile not found'
+      });
     }
+
+    return res.status(200).json({
+      user: {
+        userId: user.user_id,
+        displayName: user.display_name,
+        email: user.email,
+        profileImageUrl: user.profile_image_url,
+        bio: user.bio,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error retrieving user profile:', error.message);
+
+    return res.status(500).json({
+      message: 'Internal server error'
+    });
+  }
 };
 
 // Update supported profile fields for the authenticated Mosalinx user.
 const updateUserProfile = async (req, res) => {
-    const allowedFields = ['displayName', 'profileImageUrl', 'bio'];
-    const requestedFields = Object.keys(req.body);
+  // Profile pictures are managed exclusively through the authenticated avatar upload endpoint.
+  const allowedFields = ['displayName', 'bio'];
+  const requestedFields = Object.keys(req.body);
 
-    // Reject empty requests or attempts to modify protected/unsupported fields.
-    if (requestedFields.length === 0) {
-        return res.status(400).json({
-            message: 'No profile updates provided'
-        });
+  // Reject empty requests or attempts to modify protected/unsupported fields.
+  if (requestedFields.length === 0) {
+    return res.status(400).json({
+      message: 'No profile updates provided'
+    });
+  }
+
+  const unsupportedFields = requestedFields.filter(
+    (field) => !allowedFields.includes(field)
+  );
+
+  if (unsupportedFields.length > 0) {
+    return res.status(400).json({
+      message: 'Unsupported profile field'
+    });
+  }
+
+  const { displayName, bio } = req.body;
+
+  // Validate supported profile values before applying database changes.
+  if (
+    displayName !== undefined &&
+    (typeof displayName !== 'string' ||
+      displayName.trim().length === 0 ||
+      displayName.length > 100)
+  ) {
+    return res.status(400).json({
+      message: 'Invalid display name'
+    });
+  }
+
+  if (
+    bio !== undefined &&
+    bio !== null &&
+    (typeof bio !== 'string' || bio.length > 500)
+  ) {
+    return res.status(400).json({
+      message: 'Invalid bio'
+    });
+  }
+
+  try {
+    const existingUser = await findUserByFirebaseUid(req.user.uid);
+
+    if (!existingUser) {
+      return res.status(404).json({
+        message: 'User profile not found'
+      });
     }
 
-    const unsupportedFields = requestedFields.filter(
-        (field) => !allowedFields.includes(field)
-    );
+    const updates = {
+      displayName:
+        displayName !== undefined ? displayName.trim() : undefined,
+      bio,
+    };
 
-    if (unsupportedFields.length > 0) {
-        return res.status(400).json({
-            message: 'Unsupported profile field'
-        });
-    }
+    await updateUserProfileByFirebaseUid(req.user.uid, updates);
 
-    const { displayName, profileImageUrl, bio } = req.body;
+    const updatedUser = await findUserByFirebaseUid(req.user.uid);
 
-    // Validate supported profile values before applying database changes.
-    if (
-        displayName !== undefined &&
-        (typeof displayName !== 'string' ||
-            displayName.trim().length === 0 ||
-            displayName.length > 100)
-    ) {
-        return res.status(400).json({
-            message: 'Invalid display name'
-        });
-    }
+    return res.status(200).json({
+      message: 'Profile updated successfully',
+      user: {
+        userId: updatedUser.user_id,
+        displayName: updatedUser.display_name,
+        email: updatedUser.email,
+        profileImageUrl: updatedUser.profile_image_url,
+        bio: updatedUser.bio,
+        createdAt: updatedUser.created_at,
+        updatedAt: updatedUser.updated_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error updating user profile:', error.message);
 
-    if (
-        profileImageUrl !== undefined &&
-        profileImageUrl !== null &&
-        (typeof profileImageUrl !== 'string' ||
-            profileImageUrl.length > 500)
-    ) {
-        return res.status(400).json({
-            message: 'Invalid profile image URL'
-        });
-    }
-
-    if (
-        bio !== undefined &&
-        bio !== null &&
-        (typeof bio !== 'string' || bio.length > 500)
-    ) {
-        return res.status(400).json({
-            message: 'Invalid bio'
-        });
-    }
-
-    try {
-        const existingUser = await findUserByFirebaseUid(req.user.uid);
-
-        if (!existingUser) {
-            return res.status(404).json({
-                message: 'User profile not found'
-            });
-        }
-
-        const updates = {
-            displayName:
-                displayName !== undefined ? displayName.trim() : undefined,
-            profileImageUrl,
-            bio,
-        };
-
-        await updateUserProfileByFirebaseUid(req.user.uid, updates);
-
-        const updatedUser = await findUserByFirebaseUid(req.user.uid);
-
-        return res.status(200).json({
-            message: 'Profile updated successfully',
-            user: {
-                userId: updatedUser.user_id,
-                displayName: updatedUser.display_name,
-                email: updatedUser.email,
-                profileImageUrl: updatedUser.profile_image_url,
-                bio: updatedUser.bio,
-                createdAt: updatedUser.created_at,
-                updatedAt: updatedUser.updated_at,
-            }
-        });
-    } catch (error) {
-        console.error('Error updating user profile:', error.message);
-
-        return res.status(500).json({
-            message: 'Internal server error'
-        });
-    }
+    return res.status(500).json({
+      message: 'Internal server error'
+    });
+  }
 };
 
 module.exports = {
-    registerUser,
-    getUserProfile,
-    updateUserProfile,
+  registerUser,
+  getUserProfile,
+  updateUserProfile,
 };

@@ -1,21 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
-import { updateUserProfile } from '../services/profileService.js'
+import {
+  getUserAvatar,
+  updateUserProfile,
+  uploadUserAvatar,
+} from '../services/profileService.js'
 import './Profile.css'
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say']
 
 const DEFAULT_PROFILE = {
-    firstName: '',
-    lastName: '',
-    email: '',
-    birthdate: '',
-    gender: '',
-    pronouns: '',
-    bio: '',
-    avatarUrl: null,
-  }
+  firstName: '',
+  lastName: '',
+  email: '',
+  birthdate: '',
+  gender: '',
+  pronouns: '',
+  bio: '',
+  avatarUrl: null,
+}
 
 function Profile() {
   const navigate = useNavigate()
@@ -33,33 +37,120 @@ function Profile() {
 
   const savedProfile = userProfile
     ? {
-        firstName: firstName || '',
-        lastName: lastNameParts.join(' '),
-        email: userProfile.email ?? '',
-        birthdate: '',
-        gender: '',
-        pronouns: '',
-        bio: userProfile.bio ?? '',
-        avatarUrl: userProfile.profileImageUrl ?? null,
-      }
+      firstName: firstName || '',
+      lastName: lastNameParts.join(' '),
+      email: userProfile.email ?? '',
+      birthdate: '',
+      gender: '',
+      pronouns: '',
+      bio: userProfile.bio ?? '',
+      avatarUrl: userProfile.profileImageUrl ?? null,
+    }
     : DEFAULT_PROFILE
 
   const [draftProfile, setDraftProfile] = useState(DEFAULT_PROFILE)
+  // Track saved avatar URLs so replacements can release old browser resources.
+  const [savedAvatarUrl, setSavedAvatarUrl] = useState(null)
+  const savedAvatarUrlRef = useRef(null)
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState(null)
+  const previewAvatarUrlRef = useRef(null)
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'cancel' | 'back'
 
+  // Replace the displayed avatar and release its previous blob URL.
+  function replaceSavedAvatarUrl(nextUrl) {
+    if (savedAvatarUrlRef.current && savedAvatarUrlRef.current !== nextUrl) {
+      URL.revokeObjectURL(savedAvatarUrlRef.current)
+    }
+
+    savedAvatarUrlRef.current = nextUrl
+    setSavedAvatarUrl(nextUrl)
+  }
+
+  // Release the active saved avatar when the Profile component unmounts.
+  useEffect(() => {
+    return () => {
+      if (savedAvatarUrlRef.current) {
+        URL.revokeObjectURL(savedAvatarUrlRef.current)
+        savedAvatarUrlRef.current = null
+      }
+    }
+  }, [])
+
+  // Release an unsaved avatar preview when leaving the Profile page.
+  useEffect(() => {
+    return () => {
+      if (previewAvatarUrlRef.current) {
+        URL.revokeObjectURL(previewAvatarUrlRef.current)
+        previewAvatarUrlRef.current = null
+      }
+    }
+  }, [])
+
+  // Load the authenticated user's saved avatar when its Storage reference changes.
+  useEffect(() => {
+    if (!currentUser || !userProfile?.userId || !userProfile.profileImageUrl) {
+      return
+    }
+
+    let cancelled = false
+
+    async function loadAvatar() {
+      try {
+        const imageBlob = await getUserAvatar(currentUser, userProfile.userId)
+
+        if (cancelled) return
+
+        const objectUrl = URL.createObjectURL(imageBlob)
+        replaceSavedAvatarUrl(objectUrl)
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load profile picture:', error)
+        }
+      }
+    }
+
+    loadAvatar()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, userProfile?.userId, userProfile?.profileImageUrl])
+
   function updateField(key, value) {
     setDraftProfile((prev) => ({ ...prev, [key]: value }))
   }
 
+  // Preview the selected image while retaining the file for upload.
   function handleAvatarChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = URL.createObjectURL(file)
-    updateField('avatarUrl', url)
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+
+    if (!allowedTypes.includes(file.type) || file.size > 5 * 1024 * 1024 || file.size === 0) {
+      setSaveError('Please select a JPEG, PNG, or WebP image under 5 MB.')
+      e.target.value = ''
+      return
+    }
+
+    // Release the previous preview before creating a replacement.
+    if (previewAvatarUrlRef.current) {
+      URL.revokeObjectURL(previewAvatarUrlRef.current)
+      previewAvatarUrlRef.current = null
+    }
+
+    setSaveError('')
+    setSelectedAvatarFile(file)
+
+    const previewUrl = URL.createObjectURL(file)
+    previewAvatarUrlRef.current = previewUrl
+    updateField('avatarUrl', previewUrl)
+
+    e.target.value = ''
   }
 
   function isDirty() {
@@ -72,11 +163,14 @@ function Profile() {
     setIsEditing(true)
   }
 
+  // Exit editing immediately when there are no unsaved changes.
   function handleCancel() {
     if (isDirty()) {
       setPendingAction('cancel')
       setShowCancelConfirm(true)
     } else {
+      setSelectedAvatarFile(null)
+      setDraftProfile(savedProfile)
       setIsEditing(false)
     }
   }
@@ -90,13 +184,22 @@ function Profile() {
     }
   }
 
+  // Discard unsaved profile changes and release the temporary avatar preview.
   function confirmDiscard() {
+    if (previewAvatarUrlRef.current) {
+      URL.revokeObjectURL(previewAvatarUrlRef.current)
+      previewAvatarUrlRef.current = null
+    }
+
+    setSelectedAvatarFile(null)
     setDraftProfile(savedProfile)
     setShowCancelConfirm(false)
     setIsEditing(false)
+
     if (pendingAction === 'back') {
       navigate('/dashboard')
     }
+
     setPendingAction(null)
   }
 
@@ -119,7 +222,25 @@ function Profile() {
         bio: draftProfile.bio || null,
       }
 
-      const updatedProfile = await updateUserProfile(currentUser, updates)
+      // Save profile fields, then upload the selected picture if one exists.
+      let updatedProfile = await updateUserProfile(currentUser, updates)
+
+      if (selectedAvatarFile) {
+        updatedProfile = await uploadUserAvatar(currentUser, selectedAvatarFile)
+
+        // Retrieve the saved avatar, falling back to the selected image if needed.
+        try {
+          const imageBlob = await getUserAvatar(currentUser, updatedProfile.userId)
+          const newAvatarUrl = URL.createObjectURL(imageBlob)
+
+          replaceSavedAvatarUrl(newAvatarUrl)
+        } catch (avatarError) {
+          console.error('Avatar saved, but could not be reloaded:', avatarError)
+
+          // Preserve the selected image as the displayed avatar until the next load.
+          replaceSavedAvatarUrl(URL.createObjectURL(selectedAvatarFile))
+        }
+      }
 
       // Synchronize the account menu with the successfully saved profile.
       setUserProfile(updatedProfile)
@@ -131,6 +252,16 @@ function Profile() {
         bio: updatedProfile.bio ?? '',
       }))
 
+      // Clear the pending upload after the picture is saved successfully.
+      if (selectedAvatarFile) {
+        if (previewAvatarUrlRef.current) {
+          URL.revokeObjectURL(previewAvatarUrlRef.current)
+          previewAvatarUrlRef.current = null
+        }
+
+        setSelectedAvatarFile(null)
+      }
+
       setIsEditing(false)
     } catch (error) {
       setSaveError(error.message || 'Failed to save profile.')
@@ -139,7 +270,10 @@ function Profile() {
     }
   }
 
-  const avatarToShow = isEditing ? draftProfile.avatarUrl : savedProfile.avatarUrl
+  // Keep the selected preview visible until the saved avatar is ready.
+  const avatarToShow = selectedAvatarFile && isEditing
+    ? draftProfile.avatarUrl
+    : savedAvatarUrl
 
   // Show controlled UI states while profile data is loading or unavailable.
   if (authLoading || (currentUser && profileLoading)) {
