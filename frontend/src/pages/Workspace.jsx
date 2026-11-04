@@ -1,3 +1,4 @@
+import { createWorkspacePost } from '../services/workspacePostService'
 import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
@@ -1101,6 +1102,8 @@ function Workspace() {
   const [posts, setPosts] = useState(INITIAL_POSTS)
   const [changes, setChanges] = useState(INITIAL_CHANGES)
   const [composerOpen, setComposerOpen] = useState(false)
+  const [isPublishingPost, setIsPublishingPost] = useState(false)
+  const publishingPostRef = useRef(false)
 
   // Save prompt: asks whether a save should also become a post. "Don't ask
   // again" is remembered in this browser only.
@@ -1621,45 +1624,92 @@ function Workspace() {
     setComposerFileIds((prev) => (prev.includes(id) ? prev.filter((fileId) => fileId !== id) : [...prev, id]))
   }
 
-  function handlePublishPost(event) {
-    event.preventDefault()
-    const editor = composerEditorRef.current
-    if (!editor) return
+async function handlePublishPost(event) {
+  event.preventDefault()
 
-    const lines = serializeEditor(editor)
-    const hasText = linesHaveText(lines)
-    if (!hasText && composerImages.length === 0 && composerFileIds.length === 0) {
-      setComposerError('Write something, or attach an image or a file, before posting.')
-      return
-    }
+  if (publishingPostRef.current) return
 
-    const currentUser = auth.currentUser
-    const allFiles = flattenFiles(tree)
-    const linkedFiles = composerFileIds
-      .map((id) => allFiles.find((file) => file.id === id))
-      .filter(Boolean)
-      .map((file) => ({ id: file.id, name: file.name }))
+  const editor = composerEditorRef.current
+  if (!editor) return
 
+  setComposerError('')
+
+  const lines = serializeEditor(editor)
+  const hasText = linesHaveText(lines)
+
+  if (!hasText) {
+    setComposerError('Write something before posting.')
+    return
+  }
+
+  if (composerImages.length > 0 || composerFileIds.length > 0) {
+    setComposerError(
+      'Image and file attachments are not supported for posts yet. Remove your attachments before publishing.'
+    )
+    return
+  }
+
+  const currentUser = auth.currentUser
+  const projectId = activeProject?.project_id
+
+  if (!currentUser) {
+    setComposerError('Your session has expired. Please sign in again.')
+    return
+  }
+
+  if (!projectId) {
+    setComposerError('Select a project before creating a post.')
+    return
+  }
+
+  // Convert formatted editor lines into the plain text accepted by the API.
+  const postContent = lines
+    .map((runs) => runs.map((run) => run.text).join(''))
+    .join('\n')
+    .trim()
+
+  if (!postContent) {
+    setComposerError('Write something before posting.')
+    return
+  }
+
+  publishingPostRef.current = true
+  setIsPublishingPost(true)
+
+  try {
+    const createdPost = await createWorkspacePost(
+      currentUser,
+      projectId,
+      postContent
+    )
+
+    // Add the post to the feed only after the API confirms creation.
     setPosts((prev) => [
       {
-        id: nextId(),
-        projectId: activeProject?.project_id ?? null,
-        user: currentUser?.displayName || currentUser?.email || 'You',
-        avatarUrl: currentUser?.photoURL || null,
-        lines: hasText ? lines : [],
-        images: composerImages,
-        files: linkedFiles,
+        id: createdPost.postId,
+        projectId: createdPost.projectId,
+        user: currentUser.displayName || currentUser.email || 'You',
+        avatarUrl: currentUser.photoURL || null,
+        lines: plainLines(createdPost.postContent),
+        images: [],
+        files: [],
         timestamp: Date.now(),
       },
       ...prev,
     ])
 
-    // The images now belong to the post, so don't revoke them here.
-    setComposerImages([])
     setComposerOpen(false)
     setFeedView('posts')
     setFeedOpen(true)
+  } catch (error) {
+    setComposerError(
+      error.message || 'Unable to publish your post. Please try again.'
+    )
+  } finally {
+    publishingPostRef.current = false
+    setIsPublishingPost(false)
   }
+}
 
   function createNewFile(type) {
     const typeInfo = FILE_TYPES[type]
@@ -3022,27 +3072,30 @@ function Workspace() {
               )}
 
               {composerFileIds.length > 0 && (
-                <div className="workspace-composer-chips">
-                  {composerFileIds.map((id) => {
-                    const file = flattenFiles(tree).find((candidate) => candidate.id === id)
-                    if (!file) return null
-                    return (
-                      <span key={id} className="workspace-composer-chip">
-                        <span className="workspace-tree-icon">{FILE_TYPES[file.type]?.icon ?? ICONS.document}</span>
-                        {file.name}
-                        <button
-                          type="button"
-                          className="workspace-composer-chip-remove"
-                          onClick={() => toggleComposerFile(id)}
-                          aria-label={`Unlink ${file.name}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    )
-                  })}
-                </div>
-              )}
+  <div className="workspace-composer-chips">
+    {composerFileIds.map((id) => {
+      const file = flattenFiles(tree).find((candidate) => candidate.id === id)
+      if (!file) return null
+
+      return (
+        <span key={id} className="workspace-composer-chip">
+          <span className="workspace-tree-icon">
+            {FILE_TYPES[file.type]?.icon ?? ICONS.document}
+          </span>
+          {file.name}
+          <button
+            type="button"
+            className="workspace-composer-chip-remove"
+            onClick={() => toggleComposerFile(id)}
+            aria-label={`Unlink ${file.name}`}
+          >
+            ×
+          </button>
+        </span>
+      )
+    })}
+  </div>
+)}
 
               {composerPickerOpen && (
                 <div className="workspace-composer-picker">
@@ -3066,16 +3119,28 @@ function Workspace() {
               )}
 
               {composerError && (
-                <p className="workspace-modal-error" role="alert">{composerError}</p>
-              )}
-              <div className="workspace-modal-actions">
-                <button type="button" className="workspace-modal-cancel" onClick={closeComposer}>
-                  Cancel
-                </button>
-                <button type="submit" className="workspace-modal-create">
-                  Post
-                </button>
-              </div>
+                  <p className="workspace-modal-error" role="alert">
+                    {composerError}
+                  </p>
+                )}
+
+                <div className="workspace-modal-actions">
+                  <button
+                    type="button"
+                    className="workspace-modal-cancel"
+                    onClick={closeComposer}
+                    disabled={isPublishingPost}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="workspace-modal-create"
+                    disabled={isPublishingPost}
+                  >
+                    {isPublishingPost ? 'Posting...' : 'Post'}
+                  </button>
+                </div>
             </form>
           </div>
         </div>
