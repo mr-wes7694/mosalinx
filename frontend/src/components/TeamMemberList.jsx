@@ -44,7 +44,7 @@ function TeamMemberList({ members = [], loading = false, error = "" }) {
 
             {isOwner && (
               <span className="team-member-owner" aria-label="Project owner">
-                ★ Owner
+                {"\u2605"} Owner
               </span>
             )}
           </div>
