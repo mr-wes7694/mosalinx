@@ -15,7 +15,8 @@ import './DashboardTile.css'
 
 // ---------- Small helpers ----------
 
-// A steady little tilt per tile so the board looks a little more human.
+// A steady little tilt per tile (same tile, same angle) so the board looks
+// hand-pinned instead of gridded.
 function tiltFor(id) {
   let hash = 0
   for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) | 0
@@ -28,7 +29,8 @@ function formatPostTime(timestamp) {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-// Date-only strings would otherwise be read as UTC.
+// Date-only strings ("2026-10-22") would otherwise be read as UTC and land
+// on the previous day for anyone west of Greenwich.
 function parseEventDate(value) {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [y, m, d] = value.split('-').map(Number)
@@ -54,8 +56,10 @@ function TextBody({ config }) {
   return <p className="tile-text">{config.text}</p>
 }
 
-function GraphBody({ config }) {
-  const source = getAnalyticsSource(config.sourceId)
+// Also used by the Statistics page. `source` lets a caller pass computed data
+// instead of looking one up by id; the dashboard never passes it.
+export function GraphBody({ config, source: provided }) {
+  const source = provided ?? getAnalyticsSource(config.sourceId)
   if (!source || source.values.length === 0) {
     return <p className="tile-empty">This graph has no data to show. Use Edit to pick a source.</p>
   }
@@ -327,7 +331,7 @@ function CheckIcon() {
   )
 }
 
-// The dropdown behind the paint brush: tile style, then its color.
+// The dropdown behind the paint brush: tile style, then its color (or ink).
 function StyleMenu({ tile, onChange }) {
   const current = effectiveFontSize(tile)
   const smaller = [...TEXT_SIZES].reverse().find((size) => size < current) ?? TEXT_SIZES[0]
@@ -408,7 +412,7 @@ const STEP = CELL + GAP
 
 // One reusable bulletin-board tile. It knows how to draw every data type and
 // how to be edited, resized and dragged; the board decides what spots are
-// free.
+// free (fitsSize / onDragMove / onDragEnd / onMoveBy all go through it).
 function DashboardTile({
   tile,
   editing,
