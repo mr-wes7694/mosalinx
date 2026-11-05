@@ -121,6 +121,7 @@ function TeamMembers() {
 
       <TeamMemberList
         members={members}
+        user={currentUser}
         loading={loadingMembers}
         error={membersError}
       />
