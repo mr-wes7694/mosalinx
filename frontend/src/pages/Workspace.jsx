@@ -1,4 +1,5 @@
 import { createWorkspacePost } from '../services/workspacePostService'
+import { getProjectActivity } from '../services/activityService'
 import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
@@ -217,19 +218,6 @@ const INITIAL_TREE = [
 //   temporary in-browser object URL), and avatarUrl should come from the
 //   user's profile_image_url.
 //
-// - changes (shown on the Activity tab): one entry per file action —
-//   { id, projectId, user, action, fileId, fileName, timestamp } where action
-//   is 'created', 'modified' or 'deleted' (see ACTIVITY_LABELS). Saving no
-//   longer asks for a comment or creates a post.
-
-// Words shown on the Activity tab. Entries with no action are old saves, so
-// they read as Modified; an action we don't know reads as a neutral Updated.
-const ACTIVITY_LABELS = { created: 'Created', modified: 'Modified', deleted: 'Deleted' }
-
-function activityLabel(action) {
-  if (!action) return ACTIVITY_LABELS.modified
-  return ACTIVITY_LABELS[action] ?? 'Updated'
-}
 
 const NOW = Date.now()
 const MINUTE = 60 * 1000
@@ -284,12 +272,6 @@ const INITIAL_POSTS = [
     ],
     timestamp: NOW - 26 * HOUR,
   },
-]
-
-const INITIAL_CHANGES = [
-  { id: 'change-1', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
-  { id: 'change-2', projectId: null, action: 'modified', user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
-  { id: 'change-3', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
 ]
 
 // Turns the composer's contentEditable DOM into plain data: an array of
@@ -1100,7 +1082,9 @@ function Workspace() {
   const [feedOpen, setFeedOpen] = useState(false)
   const [feedView, setFeedView] = useState('posts')
   const [posts, setPosts] = useState(INITIAL_POSTS)
-  const [changes, setChanges] = useState(INITIAL_CHANGES)
+  const [activities, setActivities] = useState([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
   const [isPublishingPost, setIsPublishingPost] = useState(false)
   const publishingPostRef = useRef(false)
@@ -1199,6 +1183,51 @@ function Workspace() {
     }
 
     loadProjectFiles()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.project_id])
+
+    // Load backend activity whenever the active project changes.
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProjectActivity() {
+      const projectId = activeProject?.project_id
+      const user = auth.currentUser
+
+      // Clear activity from the previous project immediately.
+      setActivities([])
+      setActivityError('')
+
+      if (!projectId || !user) {
+        setActivityLoading(false)
+        return
+      }
+
+      setActivityLoading(true)
+
+      try {
+        const result = await getProjectActivity(user, projectId)
+
+        if (!cancelled) {
+          setActivities(result)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setActivityError(
+            error.message || 'Unable to load project activity.'
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setActivityLoading(false)
+        }
+      }
+    }
+
+    loadProjectActivity()
 
     return () => {
       cancelled = true
@@ -1475,9 +1504,6 @@ function Workspace() {
         throw new Error('The saved file did not return a database ID.')
       }
 
-      const userName =
-        user.displayName || user.email || 'You'
-
       setTree((prev) =>
         updateNode(prev, selectedNode.id, (node) => ({
           ...node,
@@ -1485,19 +1511,6 @@ function Workspace() {
           dirty: (node.revision ?? 0) !== savingRevision,
         }))
       )
-
-      setChanges((prev) => [
-        {
-          id: nextId(),
-          projectId,
-          action: 'modified',
-          user: userName,
-          fileId: selectedNode.id,
-          fileName: selectedNode.name,
-          timestamp: Date.now(),
-        },
-        ...prev,
-      ])
 
       return true
     } catch (error) {
@@ -1729,18 +1742,7 @@ async function handlePublishPost(event) {
     const targetFolder = DEFAULT_FILE_FOLDERS[type] ?? 'ROOT'
 
     setTree((prev) => insertNode(prev, targetFolder, newNode))
-    setChanges((prev) => [
-      {
-        id: nextId(),
-        projectId: activeProject?.project_id ?? null,
-        action: 'created',
-        user: auth.currentUser?.displayName || auth.currentUser?.email || 'You',
-        fileId: newNode.id,
-        fileName: newNode.name,
-        timestamp: Date.now(),
-      },
-      ...prev,
-    ])
+
     if (targetFolder !== 'ROOT') {
       setExpandedFolders((prev) => new Set(prev).add(targetFolder))
     }
@@ -2378,7 +2380,12 @@ async function handlePublishPost(event) {
     // they show everywhere until real data exists).
     const inProject = (item) => !item.projectId || item.projectId === activeProject?.project_id
     const projectPosts = sortByNewest(posts.filter(inProject))
-    const projectChanges = sortByNewest(changes.filter(inProject))
+    const projectActivities = sortByNewest(
+      activities.map((activity) => ({
+        ...activity,
+        timestamp: activity.created_at,
+      }))
+    )
 
     return (
       <div className="workspace-feed">
@@ -2463,28 +2470,38 @@ async function handlePublishPost(event) {
                 ))}
               </div>
             )
-          ) : projectChanges.length === 0 ? (
-            <p className="workspace-feed-empty">No activity yet. Create or save a file to see it here.</p>
+          ) : activityLoading ? (
+            <p className="workspace-feed-empty">Loading activity...</p>
+          ) : activityError ? (
+            <p className="workspace-feed-empty" role="alert">
+              {activityError}
+            </p>
+          ) : projectActivities.length === 0 ? (
+            <p className="workspace-feed-empty">No activity recorded for this project yet.</p>
           ) : (
             <ul className="workspace-feed-changes">
-              {projectChanges.map((change) => (
-                <li key={change.id} className="workspace-feed-change">
+              {projectActivities.map((activity) => (
+                <li key={activity.activity_id} className="workspace-feed-change">
                   <span className="workspace-feed-change-text">
-                    <span className="workspace-feed-change-user">{change.user || 'Someone'}</span>
-                    <span
-                      className={
-                        'workspace-feed-change-action workspace-feed-change-action--' +
-                        (ACTIVITY_LABELS[change.action] ? change.action : 'modified')
-                      }
-                    >
-                      {activityLabel(change.action)}
+                    {renderAvatar(
+                      activity.display_name || 'Someone',
+                      activity.profile_image_url
+                    )}
+                    <span className="workspace-feed-change-user">
+                      {activity.display_name || 'Someone'}
+                    </span>
+                    <span className="workspace-feed-change-action workspace-feed-change-action--modified">
+                      {(activity.activity_type || 'Activity').replaceAll('_', ' ')}
                     </span>
                     <span className="workspace-feed-change-file">
-                      {renderFeedFileLink(change.fileId, change.fileName || 'Untitled file')}
+                      {activity.activity_description || 'Activity details unavailable.'}
                     </span>
                   </span>
-                  <time className="workspace-feed-change-time" dateTime={feedTimeAttr(change.timestamp)}>
-                    {formatFeedTime(change.timestamp)}
+                  <time
+                    className="workspace-feed-change-time"
+                    dateTime={feedTimeAttr(activity.timestamp)}
+                  >
+                    {formatFeedTime(activity.timestamp)}
                   </time>
                 </li>
               ))}
