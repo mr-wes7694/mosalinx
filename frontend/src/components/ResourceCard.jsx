@@ -1,4 +1,5 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
+import ResourceDeleteModal from "./ResourceDeleteModal";
 import "./ResourceCard.css";
 
 const RESOURCE_CATEGORIES = [
@@ -16,6 +17,8 @@ function ResourceCard({
     downloading = false,
     canEdit = false,
     onSaveCategory,
+    canDelete = false,
+    onDelete,
 }) {
     const categoryId = useId();
     const [editing, setEditing] = useState(false);
@@ -24,6 +27,11 @@ function ResourceCard({
     );
     const [saving, setSaving] = useState(false);
     const [editError, setEditError] = useState("");
+
+    // Track the delete confirmation modal. The Delete button is kept so
+    // keyboard focus can return to it when the modal closes.
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const deleteButtonRef = useRef(null);
 
     // Convert stored MIME types into concise labels that are easier
     // to scan than the raw values returned by file uploads.
@@ -251,7 +259,37 @@ function ResourceCard({
                         </button>
                     )
                 )}
+
+                {/* Only eligible users (the uploader or the Project Owner)
+                    receive a Delete control. It opens a confirmation
+                    modal instead of deleting immediately. */}
+                {canDelete && onDelete && (
+                    <button
+                        ref={deleteButtonRef}
+                        type="button"
+                        className="resource-card-delete"
+                        onClick={() => setConfirmingDelete(true)}
+                        disabled={editing || saving}
+                        aria-label={`Delete ${resource.resource_name}`}
+                    >
+                        Delete
+                    </button>
+                )}
             </div>
+
+            {confirmingDelete && (
+                <ResourceDeleteModal
+                    resource={resource}
+                    details={[
+                        resourceType,
+                        formatFileSize(resource.file_size),
+                        `Uploaded ${formatUploadDate(resource.uploaded_at)}`,
+                    ]}
+                    onConfirm={() => onDelete(resource)}
+                    onClose={() => setConfirmingDelete(false)}
+                    returnFocusRef={deleteButtonRef}
+                />
+            )}
         </article>
     );
 }

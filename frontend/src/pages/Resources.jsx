@@ -11,483 +11,512 @@ import "./Resources.css";
 const API_URL = `${API_BASE_URL}/api/resources`;
 
 function Resources() {
-  // Access the authenticated user's persisted database identity.
-  const { userProfile } = useContext(AuthContext);
-  const {
-    activeProject,
-    loadingProjects,
-    projectError,
-  } = useProject();
+    // Access the authenticated user's persisted database identity.
+    const { userProfile } = useContext(AuthContext);
+    const {
+        activeProject,
+        loadingProjects,
+        projectError,
+    } = useProject();
 
-  const [resources, setResources] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [downloadingId, setDownloadingId] = useState(null);
+    const [resources, setResources] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [downloadingId, setDownloadingId] = useState(null);
 
-  // Allow project owners and original uploaders to edit resources
-  // only when those resources belong to the active project.
-  const canEditResource = (resource) => {
-    if (!userProfile?.userId || !activeProject?.role) {
-      return false;
-    }
+    // Allow project owners and original uploaders to edit resources
+    // only when those resources belong to the active project.
+    const canEditResource = (resource) => {
+        if (!userProfile?.userId || !activeProject?.role) {
+            return false;
+        }
 
-    const belongsToActiveProject =
-      Number(resource.project_id) === Number(activeProject.project_id);
+        const belongsToActiveProject =
+            Number(resource.project_id) === Number(activeProject.project_id);
 
-    if (!belongsToActiveProject) {
-      return false;
-    }
+        if (!belongsToActiveProject) {
+            return false;
+        }
 
-    const isProjectOwner =
-      activeProject.role.toLowerCase() === "owner";
+        const isProjectOwner =
+            activeProject.role.toLowerCase() === "owner";
 
-    const isOriginalUploader =
-      Number(resource.uploaded_by) === Number(userProfile.userId);
+        const isOriginalUploader =
+            Number(resource.uploaded_by) === Number(userProfile.userId);
 
-    return isProjectOwner || isOriginalUploader;
-  };
+        return isProjectOwner || isOriginalUploader;
+    };
 
-  // Track backend Resource Search results and request state separately
-  // from the complete project repository.
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState("");
+    // Show Delete only to the original uploader or the Project Owner of the
+    // resource's project. These are the same people who may edit a resource,
+    // but the rule is kept separate so the two permissions can diverge.
+    // This only controls what is shown; the backend still enforces access.
+    const canDeleteResource = (resource) => canEditResource(resource);
 
-  // Track whether Resource Search is actively displaying a submitted
-  // query so the full repository does not duplicate search results.
-  const [searchActive, setSearchActive] = useState(false);
+    // Track backend Resource Search results and request state separately
+    // from the complete project repository.
+    const [searchResults, setSearchResults] = useState([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchError, setSearchError] = useState("");
 
-  // Control whether the existing Resource Upload form is visible.
-  const [showUpload, setShowUpload] = useState(false);
+    // Track whether Resource Search is actively displaying a submitted
+    // query so the full repository does not duplicate search results.
+    const [searchActive, setSearchActive] = useState(false);
 
-  // Display temporary feedback after a resource uploads successfully.
-  const [uploadSuccess, setUploadSuccess] = useState("");
+    // Control whether the existing Resource Upload form is visible.
+    const [showUpload, setShowUpload] = useState(false);
 
-  // Automatically dismiss successful upload feedback after four seconds.
-  useEffect(() => {
-    if (!uploadSuccess) {
-      return;
-    }
+    // Load all resources belonging to the active project using the
+    // existing authenticated Resource API workflow.
+    const loadResources = useCallback(async () => {
+        // Clear any previous search state before loading resources for
+        // the current active project.
+        setSearchResults([]);
+        setSearchError("");
+        setSearchActive(false);
 
-    const timeoutId = setTimeout(() => {
-      setUploadSuccess("");
-    }, 4000);
+        if (loadingProjects) {
+            return;
+        }
 
-    return () => clearTimeout(timeoutId);
-  }, [uploadSuccess]);
+        if (projectError) {
+            setError(projectError);
+            setLoading(false);
+            return;
+        }
 
-  // Load all resources belonging to the active project using the
-  // existing authenticated Resource API workflow.
-  const loadResources = useCallback(async () => {
-    // Clear any previous search state before loading resources for
-    // the current active project.
-    setSearchResults([]);
-    setSearchError("");
-    setSearchActive(false);
+        if (!activeProject) {
+            setResources([]);
+            setError("No active project is available.");
+            setLoading(false);
+            return;
+        }
 
-    if (loadingProjects) {
-      return;
-    }
+        const currentUser = auth.currentUser;
 
-    if (projectError) {
-      setError(projectError);
-      setLoading(false);
-      return;
+        if (!currentUser) {
+            setError("You must be signed in to view resources.");
+            setLoading(false);
+            return;
+        }
+
+        try {
+            setError("");
+
+            const token = await currentUser.getIdToken();
+
+            const response = await fetch(
+                `${API_URL}/project/${activeProject.project_id}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to load resources."
+                );
+            }
+
+            setResources(data.resources || []);
+        } catch (err) {
+            console.error("Failed to load resources:", err);
+            setError(
+                err.message || "Failed to load resources."
+            );
+        } finally {
+            setLoading(false);
+        }
+    }, [activeProject, loadingProjects, projectError]);
+
+    // Search resources within the active project through the authenticated
+    // backend Resource Search endpoint implemented in MOS-194.
+    const handleSearch = async (searchTerm) => {
+        const trimmedQuery = searchTerm.trim();
+
+        if (!trimmedQuery || !activeProject) {
+            return;
+        }
+
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            setSearchError("You must be signed in to search resources.");
+            return;
+        }
+
+        setSearchLoading(true);
+        setSearchError("");
+        setSearchResults([]);
+
+        try {
+            const token = await currentUser.getIdToken();
+
+            const response = await fetch(
+                `${API_URL}/project/${activeProject.project_id}/search?q=${encodeURIComponent(trimmedQuery)}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to search resources."
+                );
+            }
+
+            setSearchResults(data.resources || []);
+        } catch (err) {
+            console.error("Resource search failed:", err);
+            setSearchError(
+                err instanceof TypeError
+                    ? "Unable to connect to Resource Search. Please try again."
+                    : err.message || "Failed to search resources."
+            );
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    // Clear backend search state when the user returns to the
+    // complete project Resource Repository.
+    const handleSearchClear = () => {
+        setSearchResults([]);
+        setSearchError("");
+    };
+
+    // Refresh project resources whenever the active project or
+    // Resource-loading dependencies change.
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            loadResources();
+        }, 0);
+
+        return () => clearTimeout(timeoutId);
+    }, [loadResources]);
+
+    // Download the selected resource through the existing authenticated
+    // Resource API and preserve its stored filename for the user.
+    const handleDownload = async (resource) => {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            setError("You must be signed in to download a resource.");
+            return;
+        }
+
+        setError("");
+        setDownloadingId(resource.resource_id);
+
+        try {
+            const token = await currentUser.getIdToken();
+
+            const response = await fetch(
+                `${API_URL}/${resource.resource_id}/download`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                let message = "Failed to download resource.";
+
+                try {
+                    const data = await response.json();
+                    message = data.message || message;
+                } catch {
+                    // The response may be a non-JSON error.
+                }
+
+                throw new Error(message);
+            }
+
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            link.download = resource.resource_name;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (err) {
+            console.error("Resource download failed:", err);
+            setError(
+                err.message || "Failed to download resource."
+            );
+        } finally {
+            setDownloadingId(null);
+        }
+    };
+
+    // Save category changes through the authenticated Resource API and
+    // synchronize repository and search results without reloading.
+    const handleSaveCategory = async (resource, category) => {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            throw new Error("You must be signed in to edit a resource.");
+        }
+
+        const token = await currentUser.getIdToken();
+
+        const response = await fetch(
+            `${API_URL}/${resource.resource_id}`,
+            {
+                method: "PATCH",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ category }),
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.message || "Failed to update resource category."
+            );
+        }
+
+        if (!data.resource) {
+            throw new Error("The server did not return the updated resource.");
+        }
+
+        // Update both views so the new category remains consistent
+        // whether the user is browsing or searching resources.
+        const applyUpdatedResource = (previousResources) =>
+            previousResources.map((existingResource) =>
+                existingResource.resource_id === data.resource.resource_id
+                    ? data.resource
+                    : existingResource
+            );
+
+        setResources(applyUpdatedResource);
+        setSearchResults(applyUpdatedResource);
+
+        return data.resource;
+    };
+
+    // INTEGRATION POINT: Resource Delete API workflow.
+    // The confirmation modal calls this after the user selects Confirm
+    // Delete. Resolve to report success (the resource is then removed from
+    // the visible lists) or throw an Error whose message is shown in the
+    // modal so the user can retry or cancel.
+    const handleDeleteResource = async (resource) => {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            throw new Error("You must be signed in to delete a resource.");
+        }
+
+        let response;
+
+        try {
+            const token = await currentUser.getIdToken();
+
+            response = await fetch(
+                `${API_URL}/${resource.resource_id}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+        } catch {
+            throw new Error(
+                "Unable to reach the server. Please try again."
+            );
+        }
+
+        if (!response.ok) {
+            let message = "Failed to delete resource.";
+
+            try {
+                const data = await response.json();
+                message = data.message || message;
+            } catch {
+                // The response may be a non-JSON error.
+            }
+
+            throw new Error(message);
+        }
+
+        // Keep repository and search views consistent without a reload.
+        const withoutDeleted = (previousResources) =>
+            previousResources.filter(
+                (existingResource) =>
+                    existingResource.resource_id !== resource.resource_id
+            );
+
+        setResources(withoutDeleted);
+        setSearchResults(withoutDeleted);
+    };
+
+    // Toggle the Resource Upload form without changing its existing
+    // upload behavior or backend integration.
+    const handleUploadToggle = () => {
+        setShowUpload((currentValue) => !currentValue);
+    };
+
+    if (loadingProjects || loading) {
+        return <p>Loading resources...</p>;
     }
 
     if (!activeProject) {
-      setResources([]);
-      setError("No active project is available.");
-      setLoading(false);
-      return;
-    }
-
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      setError("You must be signed in to view resources.");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setError("");
-
-      const token = await currentUser.getIdToken();
-
-      const response = await fetch(
-        `${API_URL}/project/${activeProject.project_id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Failed to load resources."
+        return (
+            <section>
+                <h1>Resources</h1>
+                <p>No active project is available.</p>
+            </section>
         );
-      }
-
-      setResources(data.resources || []);
-    } catch (err) {
-      console.error("Failed to load resources:", err);
-      setError(
-        err.message || "Failed to load resources."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [activeProject, loadingProjects, projectError]);
-
-  // Search resources within the active project through the authenticated
-  // backend Resource Search endpoint implemented in MOS-194.
-  const handleSearch = async (searchTerm) => {
-    const trimmedQuery = searchTerm.trim();
-
-    if (!trimmedQuery || !activeProject) {
-      return;
     }
 
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      setSearchError("You must be signed in to search resources.");
-      return;
-    }
-
-    setSearchLoading(true);
-    setSearchError("");
-    setSearchResults([]);
-
-    try {
-      const token = await currentUser.getIdToken();
-
-      const response = await fetch(
-        `${API_URL}/project/${activeProject.project_id}/search?q=${encodeURIComponent(trimmedQuery)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Failed to search resources."
-        );
-      }
-
-      setSearchResults(data.resources || []);
-    } catch (err) {
-      console.error("Resource search failed:", err);
-      setSearchError(
-        err instanceof TypeError
-          ? "Unable to connect to Resource Search. Please try again."
-          : err.message || "Failed to search resources."
-      );
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  // Clear backend search state when the user returns to the
-  // complete project Resource Repository.
-  const handleSearchClear = () => {
-    setSearchResults([]);
-    setSearchError("");
-  };
-
-  // Refresh project resources whenever the active project or
-  // Resource-loading dependencies change.
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      loadResources();
-    }, 0);
-
-    return () => clearTimeout(timeoutId);
-  }, [loadResources]);
-
-  // Download the selected resource through the existing authenticated
-  // Resource API and preserve its stored filename for the user.
-  const handleDownload = async (resource) => {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      setError("You must be signed in to download a resource.");
-      return;
-    }
-
-    setError("");
-    setDownloadingId(resource.resource_id);
-
-    try {
-      const token = await currentUser.getIdToken();
-
-      const response = await fetch(
-        `${API_URL}/${resource.resource_id}/download`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        let message = "Failed to download resource.";
-
-        try {
-          const data = await response.json();
-          message = data.message || message;
-        } catch {
-          // The response may be a non-JSON error.
-        }
-
-        throw new Error(message);
-      }
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = resource.resource_name;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
-      console.error("Resource download failed:", err);
-      setError(
-        err.message || "Failed to download resource."
-      );
-    } finally {
-      setDownloadingId(null);
-    }
-  };
-
-  // Save category changes through the authenticated Resource API and
-  // synchronize repository and search results without reloading.
-  const handleSaveCategory = async (resource, category) => {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      throw new Error("You must be signed in to edit a resource.");
-    }
-
-    const token = await currentUser.getIdToken();
-
-    const response = await fetch(
-      `${API_URL}/${resource.resource_id}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ category }),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data.message || "Failed to update resource category."
-      );
-    }
-
-    if (!data.resource) {
-      throw new Error("The server did not return the updated resource.");
-    }
-
-    // Update both views so the new category remains consistent
-    // whether the user is browsing or searching resources.
-    const applyUpdatedResource = (previousResources) =>
-      previousResources.map((existingResource) =>
-        existingResource.resource_id === data.resource.resource_id
-          ? data.resource
-          : existingResource
-      );
-
-    setResources(applyUpdatedResource);
-    setSearchResults(applyUpdatedResource);
-
-    return data.resource;
-  };
-
-  // Refresh the repository and close the upload form after a successful upload.
-  const handleUploadSuccess = async () => {
-    setShowUpload(false);
-    setUploadSuccess("Resource uploaded successfully.");
-
-    // Refresh the repository without interrupting the success feedback.
-    await loadResources();
-  };
-
-  // Toggle the Resource Upload form without changing its existing
-  // upload behavior or backend integration.
-  const handleUploadToggle = () => {
-    setShowUpload((currentValue) => !currentValue);
-  };
-
-  if (loadingProjects || loading) {
-    return <p>Loading resources...</p>;
-  }
-
-  if (!activeProject) {
     return (
-      <section>
-        <h1>Resources</h1>
-        <p>No active project is available.</p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="resources-page">
-      <div className="resources-workspace">
-        {/* Introduce the Resource Repository and keep its primary
+        <section className="resources-page">
+            <div className="resources-workspace">
+                {/* Introduce the Resource Repository and keep its primary
                     upload action accessible without permanently showing the form. */}
-        <header className="resources-page-header">
-          <div>
-            <h1>Resources</h1>
+                <header className="resources-page-header">
+                    <div>
+                        <h1>Resources</h1>
 
-            <p>
-              Manage files for{" "}
-              <strong>{activeProject.project_name}</strong>.
-            </p>
-          </div>
+                        <p>
+                            Manage files for{" "}
+                            <strong>{activeProject.project_name}</strong>.
+                        </p>
+                    </div>
 
-          <button
-            type="button"
-            className="resources-upload-toggle"
-            onClick={handleUploadToggle}
-            aria-expanded={showUpload}
-          >
-            {showUpload
-              ? "Cancel"
-              : "Upload"}
-          </button>
-        </header>
+                    <button
+                        type="button"
+                        className="resources-upload-toggle"
+                        onClick={handleUploadToggle}
+                        aria-expanded={showUpload}
+                    >
+                        {showUpload
+                            ? "Cancel"
+                            : "Upload"}
+                    </button>
+                </header>
 
-        {/* Confirm successful uploads with a centered notification. */}
-        {uploadSuccess && (
-          <div className="resources-upload-success" role="status">
-            <span className="resources-toast-icon" aria-hidden="true">
-              ✓
-            </span>
-            <span className="resources-toast-message">
-              {uploadSuccess}
-            </span>
-          </div>
-        )}
-
-        {/* Reveal the existing upload workflow only when requested,
+                {/* Reveal the existing upload workflow only when requested,
                     preserving its established backend integration. */}
-        {showUpload && (
-          <div className="resources-upload-panel">
-            <ResourceUpload
-              projectId={activeProject.project_id}
-              onUploadSuccess={handleUploadSuccess}
-            />
-          </div>
-        )}
+                {showUpload && (
+                    <div className="resources-upload-panel">
+                        <ResourceUpload
+                            projectId={activeProject.project_id}
+                            onUploadSuccess={loadResources}
+                        />
+                    </div>
+                )}
 
-        {/* Display Resource Repository errors independently from
+                {/* Display Resource Repository errors independently from
                     Resource Search request feedback. */}
-        {error && !searchActive && (
-          <p
-            className="resource-search-message resource-search-error"
-            role="alert"
-          >
-            {error}
-          </p>
-        )}
+                {error && !searchActive && (
+                    <p
+                        className="resource-search-message resource-search-error"
+                        role="alert"
+                    >
+                        {error}
+                    </p>
+                )}
 
-        {/* Keep Resource Search within the same project-scoped
+                {/* Keep Resource Search within the same project-scoped
                     repository experience as the standard resource listing. */}
-        <ResourceSearch
-          searchResults={searchResults}
-          onSearch={handleSearch}
-          onSearchClear={handleSearchClear}
-          onDownload={handleDownload}
-          canEditResource={canEditResource}
-          onSaveCategory={handleSaveCategory}
-          onSearchStateChange={setSearchActive}
-          downloadingId={downloadingId}
-          loading={searchLoading}
-          error={searchError}
-        />
-
-        {/* Present the complete project repository independently from
-                    active search results so clearing search restores this view. */}
-        {!searchActive && (
-          <section
-            className="resources-repository"
-            aria-labelledby="project-resources-heading"
-          >
-            <div className="resources-repository-header">
-              <div>
-                <h2 id="project-resources-heading">
-                  Project Resources
-                </h2>
-
-                <p>
-                  {resources.length}{" "}
-                  {resources.length === 1
-                    ? "resource"
-                    : "resources"}{" "}
-                  available
-                </p>
-              </div>
-            </div>
-
-            {/* Distinguish an empty repository from a search that
-                            simply returned no matching results. */}
-            {resources.length === 0 ? (
-              <div className="resources-empty">
-                <h3>No resources yet</h3>
-
-                <p>
-                  Upload a resource to start building this
-                  project&apos;s repository.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => setShowUpload(true)}
-                >
-                  Upload Resource
-                </button>
-              </div>
-            ) : (
-              <div className="resources-list">
-                {resources.map((resource) => (
-                  <ResourceCard
-                    key={resource.resource_id}
-                    resource={resource}
+                <ResourceSearch
+                    searchResults={searchResults}
+                    onSearch={handleSearch}
+                    onSearchClear={handleSearchClear}
                     onDownload={handleDownload}
-                    downloading={
-                      downloadingId === resource.resource_id
-                    }
-                    canEdit={canEditResource(resource)}
+                    canEditResource={canEditResource}
                     onSaveCategory={handleSaveCategory}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-      </div>
-    </section>
-  );
+                    canDeleteResource={canDeleteResource}
+                    onDeleteResource={handleDeleteResource}
+                    onSearchStateChange={setSearchActive}
+                    downloadingId={downloadingId}
+                    loading={searchLoading}
+                    error={searchError}
+                />
+
+                {/* Present the complete project repository independently from
+                    active search results so clearing search restores this view. */}
+                {!searchActive && (
+                    <section
+                        className="resources-repository"
+                        aria-labelledby="project-resources-heading"
+                    >
+                        <div className="resources-repository-header">
+                            <div>
+                                <h2 id="project-resources-heading">
+                                    Project Resources
+                                </h2>
+
+                                <p>
+                                    {resources.length}{" "}
+                                    {resources.length === 1
+                                        ? "resource"
+                                        : "resources"}{" "}
+                                    available
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Distinguish an empty repository from a search that
+                            simply returned no matching results. */}
+                        {resources.length === 0 ? (
+                            <div className="resources-empty">
+                                <h3>No resources yet</h3>
+
+                                <p>
+                                    Upload a resource to start building this
+                                    project&apos;s repository.
+                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowUpload(true)}
+                                >
+                                    Upload Resource
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="resources-list">
+                                {resources.map((resource) => (
+                                    <ResourceCard
+                                        key={resource.resource_id}
+                                        resource={resource}
+                                        onDownload={handleDownload}
+                                        downloading={
+                                            downloadingId === resource.resource_id
+                                        }
+                                        canEdit={canEditResource(resource)}
+                                        onSaveCategory={handleSaveCategory}
+                                        canDelete={canDeleteResource(resource)}
+                                        onDelete={handleDeleteResource}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                )}
+            </div>
+        </section>
+    );
 }
 
 export default Resources;
