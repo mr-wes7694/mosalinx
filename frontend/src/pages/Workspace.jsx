@@ -823,15 +823,36 @@ function getInitials(name) {
 }
 
 // Profile picture if the user has one, otherwise a colored initials circle.
-function renderAvatar(name, avatarUrl, extraClass = '') {
+function FeedAvatar({ name, avatarUrl, extraClass = '' }) {
+  const [imageFailed, setImageFailed] = useState(false)
   const className = 'workspace-feed-avatar' + (extraClass ? ` ${extraClass}` : '')
-  if (avatarUrl) {
-    return <img className={className + ' workspace-feed-avatar--img'} src={avatarUrl} alt="" />
+
+  if (avatarUrl && !imageFailed) {
+    return (
+      <img
+        className={className + ' workspace-feed-avatar--img'}
+        src={avatarUrl}
+        alt=""
+        onError={() => setImageFailed(true)}
+      />
+    )
   }
+
   return (
     <span className={className} style={{ background: colorForName(name) }} aria-hidden="true">
       {getInitials(name)}
     </span>
+  )
+}
+
+function renderAvatar(name, avatarUrl, extraClass = '') {
+  return (
+    <FeedAvatar
+      key={avatarUrl || 'no-avatar'}
+      name={name}
+      avatarUrl={avatarUrl}
+      extraClass={extraClass}
+    />
   )
 }
 
@@ -2490,8 +2511,14 @@ async function handlePublishPost(event) {
                     <span className="workspace-feed-change-user">
                       {activity.display_name || 'Someone'}
                     </span>
-                    <span className="workspace-feed-change-action workspace-feed-change-action--modified">
-                      {(activity.activity_type || 'Activity').replaceAll('_', ' ')}
+                    <span
+                      className={`workspace-feed-change-action ${
+                        activity.activity_type === 'resource_uploaded'
+                          ? 'workspace-feed-change-action--created'
+                          : 'workspace-feed-change-action--modified'
+                      }`}
+                    >
+                      {activity.activity_type === 'resource_uploaded' ? 'Created' : 'Modified'}
                     </span>
                     <span className="workspace-feed-change-file">
                       {activity.activity_description || 'Activity details unavailable.'}

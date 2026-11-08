@@ -1316,6 +1316,7 @@ button.workspace-feed-file:hover {
 
 .workspace-feed-change-file {
   min-width: 0;
+  color: #4a4d52;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
