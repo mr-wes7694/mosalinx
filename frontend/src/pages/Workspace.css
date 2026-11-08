@@ -1209,6 +1209,7 @@
 }
 
 .workspace-feed-avatar {
+  position: relative;
   flex-shrink: 0;
   width: 32px;
   height: 32px;
@@ -1363,6 +1364,11 @@ button.workspace-feed-file:hover {
 }
 
 .workspace-feed-avatar--img {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 50%;
   object-fit: cover;
   background: #e8e9ec;
 }
