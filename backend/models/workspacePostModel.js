@@ -3,69 +3,94 @@ const { createActivityLog } = require('./activityLogModel');
 
 // Create a workspace post and its activity record together.
 const createWorkspacePost = async (
-    projectId,
-    createdBy,
-    postTitle,
-    postContent
+  projectId,
+  createdBy,
+  postTitle,
+  postContent
 ) => {
-    const connection = await pool.getConnection();
+  const connection = await pool.getConnection();
 
-    try {
-        await connection.beginTransaction();
+  try {
+    await connection.beginTransaction();
 
-        const [result] = await connection.query(
-            `INSERT INTO workspace_posts
+    const [result] = await connection.query(
+      `INSERT INTO workspace_posts
             (project_id, created_by, post_title, post_content)
             VALUES (?, ?, ?, ?)`,
-            [
-                projectId,
-                createdBy,
-                postTitle,
-                postContent,
-            ]
-        );
+      [
+        projectId,
+        createdBy,
+        postTitle,
+        postContent,
+      ]
+    );
 
-        // Record the post creation in the same transaction.
-        await createActivityLog(
-            projectId,
-            createdBy,
-            'workspace_post_created',
-            postTitle
-                ? `Workspace post "${postTitle}" was created.`
-                : 'A workspace post was created.',
-            connection
-        );
+    // Record the post creation in the same transaction.
+    await createActivityLog(
+      projectId,
+      createdBy,
+      'workspace_post_created',
+      postTitle
+        ? `Workspace post "${postTitle}" was created.`
+        : 'A workspace post was created.',
+      connection
+    );
 
-        await connection.commit();
+    await connection.commit();
 
-        return {
-            postId: result.insertId,
-            projectId,
-            createdBy,
-            postTitle,
-            postContent,
-        };
-    } catch (error) {
-        // Keep the post and activity log consistent.
-        try {
-            await connection.rollback();
-        } catch (rollbackError) {
-            console.error(
-                'Failed to roll back workspace post creation:',
-                rollbackError
-            );
-        }
-
-        throw error;
-    } finally {
-        connection.release();
+    return {
+      postId: result.insertId,
+      projectId,
+      createdBy,
+      postTitle,
+      postContent,
+    };
+  } catch (error) {
+    // Keep the post and activity log consistent.
+    try {
+      await connection.rollback();
+    } catch (rollbackError) {
+      console.error(
+        'Failed to roll back workspace post creation:',
+        rollbackError
+      );
     }
+
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+// Retrieve a project's posts with author details, newest first.
+const findWorkspacePostsByProjectId = async (projectId) => {
+  const [rows] = await pool.query(
+    `SELECT
+      workspace_posts.post_id,
+      workspace_posts.project_id,
+      workspace_posts.created_by,
+      workspace_posts.post_title,
+      workspace_posts.post_content,
+      workspace_posts.created_at,
+      workspace_posts.updated_at,
+      users.display_name,
+      users.profile_image_url
+    FROM workspace_posts
+    LEFT JOIN users
+      ON workspace_posts.created_by = users.user_id
+    WHERE workspace_posts.project_id = ?
+    ORDER BY workspace_posts.created_at DESC,
+      workspace_posts.post_id DESC`,
+    [projectId]
+  );
+
+  return rows;
 };
 
 // Find a workspace post by ID.
 const findWorkspacePostById = async (postId) => {
-    const [rows] = await pool.query(
-        `SELECT
+  const [rows] = await pool.query(
+    `SELECT
             post_id,
             project_id,
             created_by,
@@ -76,48 +101,49 @@ const findWorkspacePostById = async (postId) => {
         FROM workspace_posts
         WHERE post_id = ?
         LIMIT 1`,
-        [postId]
-    );
+    [postId]
+  );
 
-    return rows[0] || null;
+  return rows[0] || null;
 };
 
 // Update a workspace post.
 const updateWorkspacePost = async (
-    postId,
-    postTitle,
-    postContent
+  postId,
+  postTitle,
+  postContent
 ) => {
-    const [result] = await pool.query(
-        `UPDATE workspace_posts
+  const [result] = await pool.query(
+    `UPDATE workspace_posts
         SET
             post_title = ?,
             post_content = ?
         WHERE post_id = ?`,
-        [
-            postTitle,
-            postContent,
-            postId,
-        ]
-    );
+    [
+      postTitle,
+      postContent,
+      postId,
+    ]
+  );
 
-    return result.affectedRows > 0;
+  return result.affectedRows > 0;
 };
 
 // Delete a workspace post.
 const deleteWorkspacePost = async (postId) => {
-    const [result] = await pool.query(
-        `DELETE FROM workspace_posts
+  const [result] = await pool.query(
+    `DELETE FROM workspace_posts
         WHERE post_id = ?`,
-        [postId]
-    );
+    [postId]
+  );
 
-    return result.affectedRows > 0;
+  return result.affectedRows > 0;
 };
 
 module.exports = {
-    createWorkspacePost,
-    findWorkspacePostById,
-    updateWorkspacePost,
-    deleteWorkspacePost,
+  createWorkspacePost,
+  findWorkspacePostsByProjectId,
+  findWorkspacePostById,
+  updateWorkspacePost,
+  deleteWorkspacePost,
 };

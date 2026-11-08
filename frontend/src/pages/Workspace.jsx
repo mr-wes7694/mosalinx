@@ -1,4 +1,7 @@
-import { createWorkspacePost } from '../services/workspacePostService'
+import {
+  createWorkspacePost,
+  getWorkspacePosts,
+} from '../services/workspacePostService'
 import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
@@ -10,6 +13,7 @@ import {
   getWorkspaceFile,
 } from '../services/workspaceFileService'
 import './Workspace.css'
+import { getUserAvatar } from '../services/profileService'
 
 // ---------- Workspace data / file-type definitions ----------
 // Workspace files are persisted through the backend and Firebase Storage.
@@ -242,49 +246,57 @@ function plainLines(text) {
   return text.split('\n').map((line) => [{ text: line }])
 }
 
-const INITIAL_POSTS = [
-  {
-    id: 'post-1',
-    projectId: null,
-    user: 'Veronica Johnson',
-    avatarUrl: null,
-    lines: [
-      [
-        { text: 'Budget update: ', bold: true },
-        { text: 'refreshed hosting and licensing costs to match the latest vendor quotes.' },
-      ],
-      [{ text: 'Let me know if anything looks off before the client review.', italic: true }],
-    ],
-    images: [],
-    files: [{ id: 'file-budget', name: 'Budget.mosheet' }],
-    timestamp: NOW - 45 * MINUTE,
-  },
-  {
-    id: 'post-2',
-    projectId: null,
-    user: 'Lesly Martinez',
-    avatarUrl: null,
-    lines: plainLines('Filtered the user report to active accounts only and sorted by most recent login.'),
-    images: [],
-    files: [{ id: 'file-query', name: 'active_users.sql' }],
-    timestamp: NOW - 5 * HOUR,
-  },
-  {
-    id: 'post-3',
-    projectId: null,
-    user: 'Veronica Johnson',
-    avatarUrl: null,
-    lines: plainLines(
-      'Added the overview section and next steps to the proposal.\nThe pitch deck still needs the problem slide tightened up.'
-    ),
-    images: [],
-    files: [
-      { id: 'file-proposal', name: 'Client Proposal.modoc' },
-      { id: 'file-pitch', name: 'Pitch Deck.moslide' },
-    ],
-    timestamp: NOW - 26 * HOUR,
-  },
-]
+const RICH_POST_TYPE = 'mosalinx-rich-text'
+const RICH_POST_VERSION = 1
+const MAX_POST_CONTENT_BYTES = 65535
+
+// Convert formatted editor lines into a versioned storage string.
+function serializePostContent(lines) {
+  return JSON.stringify({
+    type: RICH_POST_TYPE,
+    version: RICH_POST_VERSION,
+    lines,
+  })
+}
+
+// Restore formatted posts while supporting existing plain-text content.
+function deserializePostContent(content) {
+  if (typeof content !== 'string') {
+    return plainLines('')
+  }
+
+  try {
+    const parsed = JSON.parse(content)
+
+    if (
+      parsed?.type === RICH_POST_TYPE &&
+      parsed.version === RICH_POST_VERSION &&
+      Array.isArray(parsed.lines) &&
+      parsed.lines.every((line) =>
+        Array.isArray(line) &&
+        line.every((run) =>
+          run !== null &&
+          typeof run === 'object' &&
+          typeof run.text === 'string' &&
+          ['bold', 'italic', 'underline'].every((key) =>
+            run[key] === undefined || typeof run[key] === 'boolean'
+          )
+        )
+      )
+    ) {
+      return parsed.lines
+    }
+  } catch {
+    // Existing plain-text posts are not JSON.
+  }
+
+  return plainLines(content)
+}
+
+// Check the actual UTF-8 size against MySQL's TEXT storage limit.
+function postContentFitsStorage(content) {
+  return new TextEncoder().encode(content).length <= MAX_POST_CONTENT_BYTES
+}
 
 const INITIAL_CHANGES = [
   { id: 'change-1', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
@@ -840,12 +852,31 @@ function getInitials(name) {
     .toUpperCase()
 }
 
-// Profile picture if the user has one, otherwise a colored initials circle.
+// Display a profile picture, falling back to initials if it cannot load.
 function renderAvatar(name, avatarUrl, extraClass = '') {
   const className = 'workspace-feed-avatar' + (extraClass ? ` ${extraClass}` : '')
+
   if (avatarUrl) {
-    return <img className={className + ' workspace-feed-avatar--img'} src={avatarUrl} alt="" />
+    return (
+      <span
+        className={className}
+        style={{ background: colorForName(name) }}
+        aria-hidden="true"
+      >
+        {getInitials(name)}
+        <img
+          className="workspace-feed-avatar--img"
+          src={avatarUrl}
+          alt=""
+          onError={(event) => {
+            event.currentTarget.style.display = 'none'
+          }}
+          style={{ position: 'absolute', inset: 0 }}
+        />
+      </span>
+    )
   }
+
   return (
     <span className={className} style={{ background: colorForName(name) }} aria-hidden="true">
       {getInitials(name)}
@@ -1099,11 +1130,17 @@ function Workspace() {
   const [explorerOpen, setExplorerOpen] = useState(true)
   const [feedOpen, setFeedOpen] = useState(false)
   const [feedView, setFeedView] = useState('posts')
-  const [posts, setPosts] = useState(INITIAL_POSTS)
+  const [posts, setPosts] = useState([])
+  const [postsLoading, setPostsLoading] = useState(false)
+  const [postsError, setPostsError] = useState('')
   const [changes, setChanges] = useState(INITIAL_CHANGES)
   const [composerOpen, setComposerOpen] = useState(false)
   const [isPublishingPost, setIsPublishingPost] = useState(false)
   const publishingPostRef = useRef(false)
+
+  // Track the current project during asynchronous post publishing.
+  const activeProjectIdRef = useRef(activeProject?.project_id)
+  activeProjectIdRef.current = activeProject?.project_id
 
   // Save prompt: asks whether a save should also become a post. "Don't ask
   // again" is remembered in this browser only.
@@ -1202,6 +1239,103 @@ function Workspace() {
 
     return () => {
       cancelled = true
+    }
+  }, [activeProject?.project_id])
+
+  // Load saved posts whenever the active project changes.
+  useEffect(() => {
+    let cancelled = false
+    const avatarUrls = []
+
+    async function loadProjectPosts() {
+      const projectId = activeProject?.project_id
+      const user = auth.currentUser
+
+      // Clear posts from the previously selected project.
+      setPosts([])
+      setPostsError('')
+      setPostsLoading(Boolean(projectId && user))
+
+      if (!projectId || !user) {
+        return
+      }
+
+      try {
+        const savedPosts = await getWorkspacePosts(user, projectId)
+
+        if (cancelled) return
+
+        // Display posts without waiting for profile pictures.
+        setPosts(savedPosts.map((post) => ({
+          id: post.post_id,
+          projectId: post.project_id,
+          user: post.display_name || 'Unknown User',
+          avatarUrl: null,
+          lines: deserializePostContent(post.post_content || ''),
+          images: [],
+          files: [],
+          timestamp: new Date(post.created_at).getTime(),
+        })))
+
+        setPostsLoading(false)
+
+        // Retrieve each author's avatar only once.
+        const authors = new Map()
+
+        savedPosts.forEach((post) => {
+          if (post.created_by && post.profile_image_url) {
+            authors.set(post.created_by, post.profile_image_url)
+          }
+        })
+
+        await Promise.all(
+          Array.from(authors.keys()).map(async (authorId) => {
+            try {
+              const imageBlob = await getUserAvatar(user, authorId)
+
+              if (cancelled) return
+
+              const objectUrl = URL.createObjectURL(imageBlob)
+              avatarUrls.push(objectUrl)
+
+              setPosts((currentPosts) => currentPosts.map((post) => {
+                const originalPost = savedPosts.find(
+                  (savedPost) => savedPost.post_id === post.id
+                )
+
+                if (originalPost?.created_by !== authorId) {
+                  return post
+                }
+
+                return {
+                  ...post,
+                  avatarUrl: objectUrl,
+                }
+              }))
+            } catch {
+              // Keep initials when an author's picture cannot be retrieved.
+            }
+          })
+        )
+      } catch (error) {
+        if (!cancelled) {
+          setPostsError(error.message || 'Unable to load Workspace posts.')
+          setPosts([])
+        }
+      } finally {
+        if (!cancelled) {
+          setPostsLoading(false)
+        }
+      }
+    }
+
+    loadProjectPosts()
+
+    return () => {
+      cancelled = true
+
+      // Release temporary image URLs when changing projects.
+      avatarUrls.forEach((url) => URL.revokeObjectURL(url))
     }
   }, [activeProject?.project_id])
 
@@ -1624,92 +1758,100 @@ function Workspace() {
     setComposerFileIds((prev) => (prev.includes(id) ? prev.filter((fileId) => fileId !== id) : [...prev, id]))
   }
 
-async function handlePublishPost(event) {
-  event.preventDefault()
+  async function handlePublishPost(event) {
+    event.preventDefault()
 
-  if (publishingPostRef.current) return
+    if (publishingPostRef.current) return
 
-  const editor = composerEditorRef.current
-  if (!editor) return
+    const editor = composerEditorRef.current
+    if (!editor) return
 
-  setComposerError('')
+    setComposerError('')
 
-  const lines = serializeEditor(editor)
-  const hasText = linesHaveText(lines)
+    const lines = serializeEditor(editor)
+    const hasText = linesHaveText(lines)
 
-  if (!hasText) {
-    setComposerError('Write something before posting.')
-    return
+    if (!hasText) {
+      setComposerError('Write something before posting.')
+      return
+    }
+
+    if (composerImages.length > 0 || composerFileIds.length > 0) {
+      setComposerError(
+        'Image and file attachments are not supported for posts yet. Remove your attachments before publishing.'
+      )
+      return
+    }
+
+    const currentUser = auth.currentUser
+    const projectId = activeProject?.project_id
+
+    if (!currentUser) {
+      setComposerError('Your session has expired. Please sign in again.')
+      return
+    }
+
+    if (!projectId) {
+      setComposerError('Select a project before creating a post.')
+      return
+    }
+
+    // Preserve formatted text using the versioned rich-text format.
+    const postContent = serializePostContent(lines)
+
+    if (!postContentFitsStorage(postContent)) {
+      setComposerError('This post is too long. Please shorten it before publishing.')
+      return
+    }
+
+    publishingPostRef.current = true
+    setIsPublishingPost(true)
+
+    try {
+      const createdPost = await createWorkspacePost(
+        currentUser,
+        projectId,
+        postContent
+      )
+
+      // Do not update the feed if the user switched projects while saving.
+      if (activeProjectIdRef.current !== projectId) {
+        return
+      }
+
+      // Reuse the author's loaded avatar when publishing a new post.
+      setPosts((prev) => {
+        const existingAuthorPost = prev.find(
+          (post) => post.user === createdPost.displayName && post.avatarUrl
+        )
+
+        return [
+          {
+            id: createdPost.postId,
+            projectId: createdPost.projectId,
+            user: createdPost.displayName || 'Unknown User',
+            avatarUrl: existingAuthorPost?.avatarUrl || null,
+            lines: deserializePostContent(createdPost.postContent),
+            images: [],
+            files: [],
+            timestamp: Date.now(),
+          },
+          ...prev,
+        ]
+      })
+
+      setComposerOpen(false)
+      setFeedView('posts')
+      setFeedOpen(true)
+    } catch (error) {
+      setComposerError(
+        error.message || 'Unable to publish your post. Please try again.'
+      )
+    } finally {
+      publishingPostRef.current = false
+      setIsPublishingPost(false)
+    }
   }
-
-  if (composerImages.length > 0 || composerFileIds.length > 0) {
-    setComposerError(
-      'Image and file attachments are not supported for posts yet. Remove your attachments before publishing.'
-    )
-    return
-  }
-
-  const currentUser = auth.currentUser
-  const projectId = activeProject?.project_id
-
-  if (!currentUser) {
-    setComposerError('Your session has expired. Please sign in again.')
-    return
-  }
-
-  if (!projectId) {
-    setComposerError('Select a project before creating a post.')
-    return
-  }
-
-  // Convert formatted editor lines into the plain text accepted by the API.
-  const postContent = lines
-    .map((runs) => runs.map((run) => run.text).join(''))
-    .join('\n')
-    .trim()
-
-  if (!postContent) {
-    setComposerError('Write something before posting.')
-    return
-  }
-
-  publishingPostRef.current = true
-  setIsPublishingPost(true)
-
-  try {
-    const createdPost = await createWorkspacePost(
-      currentUser,
-      projectId,
-      postContent
-    )
-
-    // Add the post to the feed only after the API confirms creation.
-    setPosts((prev) => [
-      {
-        id: createdPost.postId,
-        projectId: createdPost.projectId,
-        user: currentUser.displayName || currentUser.email || 'You',
-        avatarUrl: currentUser.photoURL || null,
-        lines: plainLines(createdPost.postContent),
-        images: [],
-        files: [],
-        timestamp: Date.now(),
-      },
-      ...prev,
-    ])
-
-    setComposerOpen(false)
-    setFeedView('posts')
-    setFeedOpen(true)
-  } catch (error) {
-    setComposerError(
-      error.message || 'Unable to publish your post. Please try again.'
-    )
-  } finally {
-    publishingPostRef.current = false
-    setIsPublishingPost(false)
-  }
-}
 
   function createNewFile(type) {
     const typeInfo = FILE_TYPES[type]
@@ -2374,10 +2516,13 @@ async function handlePublishPost(event) {
   }
 
   function renderFeed() {
-    // Only this project's entries (the sample entries have no project, so
-    // they show everywhere until real data exists).
+    // Display only posts belonging to the selected project.
+    const projectPosts = sortByNewest(
+      posts.filter((post) => post.projectId === activeProject?.project_id)
+    )
+
+    // Preserve the existing Activity Feed filtering behavior.
     const inProject = (item) => !item.projectId || item.projectId === activeProject?.project_id
-    const projectPosts = sortByNewest(posts.filter(inProject))
     const projectChanges = sortByNewest(changes.filter(inProject))
 
     return (
@@ -2419,8 +2564,18 @@ async function handlePublishPost(event) {
 
         <div id="feed-panel" role="tabpanel" aria-labelledby={'feed-tab-' + feedView}>
           {feedView === 'posts' ? (
-            projectPosts.length === 0 ? (
-              <p className="workspace-feed-empty">No posts yet. Click New Post to share an update with your team.</p>
+            postsLoading ? (
+              <p className="workspace-feed-empty" role="status">
+                Loading Workspace posts...
+              </p>
+            ) : postsError ? (
+              <p className="workspace-feed-empty" role="alert">
+                {postsError}
+              </p>
+            ) : projectPosts.length === 0 ? (
+              <p className="workspace-feed-empty">
+                No posts yet. Click New Post to share an update with your team.
+              </p>
             ) : (
               <div className="workspace-feed-posts">
                 {projectPosts.map((post) => (
@@ -3072,30 +3227,30 @@ async function handlePublishPost(event) {
               )}
 
               {composerFileIds.length > 0 && (
-  <div className="workspace-composer-chips">
-    {composerFileIds.map((id) => {
-      const file = flattenFiles(tree).find((candidate) => candidate.id === id)
-      if (!file) return null
+                <div className="workspace-composer-chips">
+                  {composerFileIds.map((id) => {
+                    const file = flattenFiles(tree).find((candidate) => candidate.id === id)
+                    if (!file) return null
 
-      return (
-        <span key={id} className="workspace-composer-chip">
-          <span className="workspace-tree-icon">
-            {FILE_TYPES[file.type]?.icon ?? ICONS.document}
-          </span>
-          {file.name}
-          <button
-            type="button"
-            className="workspace-composer-chip-remove"
-            onClick={() => toggleComposerFile(id)}
-            aria-label={`Unlink ${file.name}`}
-          >
-            ×
-          </button>
-        </span>
-      )
-    })}
-  </div>
-)}
+                    return (
+                      <span key={id} className="workspace-composer-chip">
+                        <span className="workspace-tree-icon">
+                          {FILE_TYPES[file.type]?.icon ?? ICONS.document}
+                        </span>
+                        {file.name}
+                        <button
+                          type="button"
+                          className="workspace-composer-chip-remove"
+                          onClick={() => toggleComposerFile(id)}
+                          aria-label={`Unlink ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
 
               {composerPickerOpen && (
                 <div className="workspace-composer-picker">
@@ -3119,28 +3274,28 @@ async function handlePublishPost(event) {
               )}
 
               {composerError && (
-                  <p className="workspace-modal-error" role="alert">
-                    {composerError}
-                  </p>
-                )}
+                <p className="workspace-modal-error" role="alert">
+                  {composerError}
+                </p>
+              )}
 
-                <div className="workspace-modal-actions">
-                  <button
-                    type="button"
-                    className="workspace-modal-cancel"
-                    onClick={closeComposer}
-                    disabled={isPublishingPost}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="workspace-modal-create"
-                    disabled={isPublishingPost}
-                  >
-                    {isPublishingPost ? 'Posting...' : 'Post'}
-                  </button>
-                </div>
+              <div className="workspace-modal-actions">
+                <button
+                  type="button"
+                  className="workspace-modal-cancel"
+                  onClick={closeComposer}
+                  disabled={isPublishingPost}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="workspace-modal-create"
+                  disabled={isPublishingPost}
+                >
+                  {isPublishingPost ? 'Posting...' : 'Post'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
