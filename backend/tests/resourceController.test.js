@@ -9,11 +9,13 @@ deleteStorage: 0,
 deleteRecord: 0,
 storageFile: 0,
 stream: 0,
+activityLog: 0,
 };
 
 let resourceToReturn;
 let deleteRecordResult = true;
 let storageExists = true;
+let activityLogError = null;
 
 // Mock the resource model.
 const resourceModelPath = require.resolve('../models/resourceModel');
@@ -132,6 +134,38 @@ return true;
 },
 };
 
+// Mock activity logging.
+const activityLogPath = require.resolve('../models/activityLogModel');
+
+const activityLogs = [];
+
+require.cache[activityLogPath] = {
+    id: activityLogPath,
+    filename: activityLogPath,
+    loaded: true,
+    exports: {
+        createActivityLog: async (
+            projectId,
+            userId,
+            activityType,
+            activityDescription
+        ) => {
+            calls.activityLog++;
+
+            if (activityLogError) {
+                throw activityLogError;
+            }
+
+            activityLogs.push({
+                projectId,
+                userId,
+                activityType,
+                activityDescription,
+            });
+        },
+    },
+};
+
 const controller = require('../controllers/resourceController');
 
 const makeResponse = () => ({
@@ -181,8 +215,10 @@ storage_path: 'projects/1/workspace/10_notes.json',
 });
 
 const reset = (resource) => {
+activityLogs.length = 0;
 Object.keys(calls).forEach((key) => {
 calls[key] = 0;
+activityLogError = null;
 });
 
 resourceToReturn = resource;
@@ -231,6 +267,8 @@ await controller.deleteResource(makeRequest(), res);
 assert.equal(res.statusCode, 404);
 assert.equal(calls.deleteStorage, 0);
 assert.equal(calls.deleteRecord, 0);
+assert.equal(calls.activityLog, 0);
+assert.equal(activityLogs.length, 0);
 
 });
 
@@ -246,7 +284,30 @@ assert.equal(res.statusCode, 200);
 assert.equal(calls.deleteStorage, 1);
 assert.equal(calls.deleteRecord, 1);
 assert.equal(res.body.message, 'Resource deleted successfully.');
+assert.equal(calls.activityLog, 1);
+assert.deepEqual(activityLogs[0], {
+    projectId: 1,
+    userId: 7,
+    activityType: 'resource_deleted',
+    activityDescription: 'Resource "notes.txt" was deleted.',
+});
 
+});
+
+// Storage cleanup should still happen if activity logging fails.
+test('ordinary resource delete cleans up Storage when activity logging fails', async () => {
+    reset(ordinaryResource());
+    activityLogError = new Error('Activity log unavailable');
+
+    const res = makeResponse();
+
+    await controller.deleteResource(makeRequest(), res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.deleteRecord, 1);
+    assert.equal(calls.activityLog, 1);
+    assert.equal(calls.deleteStorage, 1);
+    assert.equal(activityLogs.length, 0);
 });
 
 // A missing database record must not be reported as deleted.
@@ -261,5 +322,7 @@ await controller.deleteResource(makeRequest(), res);
 assert.equal(res.statusCode, 404);
 assert.equal(calls.deleteStorage, 0);
 assert.equal(calls.deleteRecord, 1);
+assert.equal(calls.activityLog, 0);
+assert.equal(activityLogs.length, 0);
 
 });

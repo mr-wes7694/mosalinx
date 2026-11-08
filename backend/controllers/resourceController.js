@@ -560,6 +560,21 @@ const deleteResource = async (req, res) => {
             });
         }
 
+        // Record the deletion without interrupting Storage cleanup if logging fails.
+        try {
+            await createActivityLog(
+                resource.project_id,
+                user.user_id,
+                'resource_deleted',
+                `Resource "${resource.resource_name}" was deleted.`
+            );
+        } catch (activityLogError) {
+            console.error(
+                'Error recording resource deletion activity:',
+                activityLogError
+            );
+        }
+
         // Delete the Storage file after the database confirms deletion.
         await deleteResourceStorageFile(
             resource.storage_path
