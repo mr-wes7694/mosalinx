@@ -2,6 +2,7 @@ import {
   createWorkspacePost,
   getWorkspacePosts,
 } from '../services/workspacePostService'
+import { getProjectActivity } from '../services/activityService'
 import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
@@ -13,7 +14,10 @@ import {
   getWorkspaceFile,
 } from '../services/workspaceFileService'
 import './Workspace.css'
-import { getUserAvatar } from '../services/profileService'
+import {
+  getUserAvatar,
+  getUserProfile,
+} from '../services/profileService'
 
 // ---------- Workspace data / file-type definitions ----------
 // Workspace files are persisted through the backend and Firebase Storage.
@@ -208,36 +212,10 @@ const INITIAL_TREE = [
   },
 ]
 
-// ---------- Feed (posts + saved changes) ----------
-// The feed has two separate streams, both local state seeded with samples
-// until a backend exists:
-//
-// - posts: written in the post composer (rich text, images, linked files).
-//   { id, user, avatarUrl, lines, images: [{ id, name, url }],
-//     files: [{ id, name }], timestamp }
-//   `lines` is the formatted body as plain data (see serializeEditor), so it
-//   renders as React elements and never needs innerHTML.
-//   Backend dev: images need uploading to storage (the url here is a
-//   temporary in-browser object URL), and avatarUrl should come from the
-//   user's profile_image_url.
-//
-// - changes (shown on the Activity tab): one entry per file action —
-//   { id, projectId, user, action, fileId, fileName, timestamp } where action
-//   is 'created', 'modified' or 'deleted' (see ACTIVITY_LABELS). Saving no
-//   longer asks for a comment or creates a post.
-
-// Words shown on the Activity tab. Entries with no action are old saves, so
-// they read as Modified; an action we don't know reads as a neutral Updated.
-const ACTIVITY_LABELS = { created: 'Created', modified: 'Modified', deleted: 'Deleted' }
-
-function activityLabel(action) {
-  if (!action) return ACTIVITY_LABELS.modified
-  return ACTIVITY_LABELS[action] ?? 'Updated'
-}
-
-const NOW = Date.now()
-const MINUTE = 60 * 1000
-const HOUR = 60 * MINUTE
+// ---------- Project Feed (posts + activity) ----------
+// Workspace posts and project activity are loaded from the backend.
+// Posts support formatted text, with author avatars retrieved separately.
+// Image attachments and linked files are reserved for future integration.
 
 const MAX_POST_IMAGES = 4
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -297,12 +275,6 @@ function deserializePostContent(content) {
 function postContentFitsStorage(content) {
   return new TextEncoder().encode(content).length <= MAX_POST_CONTENT_BYTES
 }
-
-const INITIAL_CHANGES = [
-  { id: 'change-1', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
-  { id: 'change-2', projectId: null, action: 'modified', user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
-  { id: 'change-3', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
-]
 
 // Turns the composer's contentEditable DOM into plain data: an array of
 // lines, each an array of { text, bold, italic, underline } runs. Anything
@@ -852,35 +824,41 @@ function getInitials(name) {
     .toUpperCase()
 }
 
-// Display a profile picture, falling back to initials if it cannot load.
-function renderAvatar(name, avatarUrl, extraClass = '') {
+// Display a profile picture, falling back to initials if loading fails.
+function FeedAvatar({ name, avatarUrl, extraClass = '' }) {
+  const [imageFailed, setImageFailed] = useState(false)
   const className = 'workspace-feed-avatar' + (extraClass ? ` ${extraClass}` : '')
 
-  if (avatarUrl) {
+  if (avatarUrl && !imageFailed) {
     return (
-      <span
-        className={className}
-        style={{ background: colorForName(name) }}
-        aria-hidden="true"
-      >
-        {getInitials(name)}
-        <img
-          className="workspace-feed-avatar--img"
-          src={avatarUrl}
-          alt=""
-          onError={(event) => {
-            event.currentTarget.style.display = 'none'
-          }}
-          style={{ position: 'absolute', inset: 0 }}
-        />
-      </span>
+      <img
+        className={className + ' workspace-feed-avatar--img'}
+        src={avatarUrl}
+        alt=""
+        onError={() => setImageFailed(true)}
+      />
     )
   }
 
   return (
-    <span className={className} style={{ background: colorForName(name) }} aria-hidden="true">
+    <span
+      className={className}
+      style={{ background: colorForName(name) }}
+      aria-hidden="true"
+    >
       {getInitials(name)}
     </span>
+  )
+}
+
+function renderAvatar(name, avatarUrl, extraClass = '') {
+  return (
+    <FeedAvatar
+      key={avatarUrl || 'no-avatar'}
+      name={name}
+      avatarUrl={avatarUrl}
+      extraClass={extraClass}
+    />
   )
 }
 
@@ -1130,10 +1108,24 @@ function Workspace() {
   const [explorerOpen, setExplorerOpen] = useState(true)
   const [feedOpen, setFeedOpen] = useState(false)
   const [feedView, setFeedView] = useState('posts')
+
+  // Workspace posts retrieved from the backend.
   const [posts, setPosts] = useState([])
   const [postsLoading, setPostsLoading] = useState(false)
   const [postsError, setPostsError] = useState('')
-  const [changes, setChanges] = useState(INITIAL_CHANGES)
+
+  // Project activity retrieved from the backend.
+  const [activities, setActivities] = useState([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState('')
+
+  // Request fresh activity after actions that create new feed entries.
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0)
+
+  // Store the authenticated user's Mosalinx profile for the post composer.
+  const [currentUserProfile, setCurrentUserProfile] = useState(null)
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState(null)
+
   const [composerOpen, setComposerOpen] = useState(false)
   const [isPublishingPost, setIsPublishingPost] = useState(false)
   const publishingPostRef = useRef(false)
@@ -1242,6 +1234,54 @@ function Workspace() {
     }
   }, [activeProject?.project_id])
 
+  // Load the current user's Mosalinx identity and uploaded avatar.
+  useEffect(() => {
+    let cancelled = false
+    let avatarUrl = null
+
+    async function loadCurrentUserProfile() {
+      const user = auth.currentUser
+
+      if (!user) {
+        setCurrentUserProfile(null)
+        setCurrentUserAvatarUrl(null)
+        return
+      }
+
+      try {
+        const profile = await getUserProfile(user)
+
+        if (cancelled) return
+
+        setCurrentUserProfile(profile)
+        setCurrentUserAvatarUrl(null)
+
+        if (profile.profileImageUrl && profile.userId) {
+          const avatarBlob = await getUserAvatar(user, profile.userId)
+
+          if (cancelled) return
+
+          avatarUrl = URL.createObjectURL(avatarBlob)
+          setCurrentUserAvatarUrl(avatarUrl)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Unable to load current user profile:', error)
+        }
+      }
+    }
+
+    loadCurrentUserProfile()
+
+    return () => {
+      cancelled = true
+
+      if (avatarUrl) {
+        URL.revokeObjectURL(avatarUrl)
+      }
+    }
+  }, [])
+
   // Load saved posts whenever the active project changes.
   useEffect(() => {
     let cancelled = false
@@ -1338,6 +1378,93 @@ function Workspace() {
       avatarUrls.forEach((url) => URL.revokeObjectURL(url))
     }
   }, [activeProject?.project_id])
+
+  // Load backend activity and author avatars for the active project.
+  useEffect(() => {
+    let cancelled = false
+    const avatarUrls = []
+
+    async function loadProjectActivity() {
+      const projectId = activeProject?.project_id
+      const user = auth.currentUser
+
+      // Clear activity from the previously selected project.
+      setActivities([])
+      setActivityError('')
+
+      if (!projectId || !user) {
+        setActivityLoading(false)
+        return
+      }
+
+      setActivityLoading(true)
+
+      try {
+        const result = await getProjectActivity(user, projectId)
+
+        if (cancelled) return
+
+        // Display activity immediately while profile pictures load.
+        setActivities(result.map((activity) => ({
+          ...activity,
+          avatarUrl: null,
+        })))
+
+        setActivityLoading(false)
+
+        // Retrieve each author's avatar only once.
+        const authors = new Map()
+
+        result.forEach((activity) => {
+          if (activity.user_id && activity.profile_image_url) {
+            authors.set(activity.user_id, true)
+          }
+        })
+
+        await Promise.all(
+          Array.from(authors.keys()).map(async (authorId) => {
+            try {
+              const imageBlob = await getUserAvatar(user, authorId)
+
+              if (cancelled) return
+
+              const objectUrl = URL.createObjectURL(imageBlob)
+              avatarUrls.push(objectUrl)
+
+              setActivities((currentActivities) =>
+                currentActivities.map((activity) => (
+                  String(activity.user_id) === String(authorId)
+                    ? { ...activity, avatarUrl: objectUrl }
+                    : activity
+                ))
+              )
+            } catch {
+              // Fall back to initials if an avatar cannot be retrieved.
+            }
+          })
+        )
+      } catch (error) {
+        if (!cancelled) {
+          setActivityError(
+            error.message || 'Unable to load project activity.'
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setActivityLoading(false)
+        }
+      }
+    }
+
+    loadProjectActivity()
+
+    return () => {
+      cancelled = true
+
+      // Release temporary image URLs when changing projects.
+      avatarUrls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [activeProject?.project_id, activityRefreshKey])
 
   // Prevent project changes from interrupting saves or silently losing edits.
   const handleProjectChange = (event) => {
@@ -1609,9 +1736,6 @@ function Workspace() {
         throw new Error('The saved file did not return a database ID.')
       }
 
-      const userName =
-        user.displayName || user.email || 'You'
-
       setTree((prev) =>
         updateNode(prev, selectedNode.id, (node) => ({
           ...node,
@@ -1619,19 +1743,6 @@ function Workspace() {
           dirty: (node.revision ?? 0) !== savingRevision,
         }))
       )
-
-      setChanges((prev) => [
-        {
-          id: nextId(),
-          projectId,
-          action: 'modified',
-          user: userName,
-          fileId: selectedNode.id,
-          fileName: selectedNode.name,
-          timestamp: Date.now(),
-        },
-        ...prev,
-      ])
 
       return true
     } catch (error) {
@@ -1840,6 +1951,9 @@ function Workspace() {
         ]
       })
 
+      // Refresh project activity after successfully publishing a post.
+      setActivityRefreshKey((prev) => prev + 1)
+
       setComposerOpen(false)
       setFeedView('posts')
       setFeedOpen(true)
@@ -1871,18 +1985,7 @@ function Workspace() {
     const targetFolder = DEFAULT_FILE_FOLDERS[type] ?? 'ROOT'
 
     setTree((prev) => insertNode(prev, targetFolder, newNode))
-    setChanges((prev) => [
-      {
-        id: nextId(),
-        projectId: activeProject?.project_id ?? null,
-        action: 'created',
-        user: auth.currentUser?.displayName || auth.currentUser?.email || 'You',
-        fileId: newNode.id,
-        fileName: newNode.name,
-        timestamp: Date.now(),
-      },
-      ...prev,
-    ])
+
     if (targetFolder !== 'ROOT') {
       setExpandedFolders((prev) => new Set(prev).add(targetFolder))
     }
@@ -2521,9 +2624,13 @@ function Workspace() {
       posts.filter((post) => post.projectId === activeProject?.project_id)
     )
 
-    // Preserve the existing Activity Feed filtering behavior.
-    const inProject = (item) => !item.projectId || item.projectId === activeProject?.project_id
-    const projectChanges = sortByNewest(changes.filter(inProject))
+    // Prepare backend activity records for newest-first display.
+    const projectActivities = sortByNewest(
+      activities.map((activity) => ({
+        ...activity,
+        timestamp: activity.created_at,
+      }))
+    )
 
     return (
       <div className="workspace-feed">
@@ -2618,28 +2725,65 @@ function Workspace() {
                 ))}
               </div>
             )
-          ) : projectChanges.length === 0 ? (
-            <p className="workspace-feed-empty">No activity yet. Create or save a file to see it here.</p>
+          ) : activityLoading ? (
+            <p className="workspace-feed-empty">Loading activity...</p>
+          ) : activityError ? (
+            <p className="workspace-feed-empty" role="alert">
+              {activityError}
+            </p>
+          ) : projectActivities.length === 0 ? (
+            <p className="workspace-feed-empty">No activity recorded for this project yet.</p>
           ) : (
             <ul className="workspace-feed-changes">
-              {projectChanges.map((change) => (
-                <li key={change.id} className="workspace-feed-change">
+              {projectActivities.map((activity) => (
+                <li key={activity.activity_id} className="workspace-feed-change">
                   <span className="workspace-feed-change-text">
-                    <span className="workspace-feed-change-user">{change.user || 'Someone'}</span>
-                    <span
-                      className={
-                        'workspace-feed-change-action workspace-feed-change-action--' +
-                        (ACTIVITY_LABELS[change.action] ? change.action : 'modified')
-                      }
-                    >
-                      {activityLabel(change.action)}
+                    {renderAvatar(
+                      activity.display_name || 'Someone',
+                      activity.avatarUrl
+                    )}
+                    <span className="workspace-feed-change-user">
+                      {activity.display_name || 'Someone'}
                     </span>
+                    {(() => {
+                      const activityType = activity.activity_type || ''
+                      const isCreated =
+                        activityType.endsWith('_created') ||
+                        activityType.endsWith('_uploaded')
+                      const isModified =
+                        activityType.endsWith('_updated') ||
+                        activityType.endsWith('_modified')
+                      const isDeleted = activityType.endsWith('_deleted')
+
+                      const actionLabel = isCreated
+                        ? 'Created'
+                        : isModified
+                          ? 'Modified'
+                          : isDeleted
+                            ? 'Deleted'
+                            : 'Activity'
+
+                      const actionClass = isCreated
+                        ? 'workspace-feed-change-action--created'
+                        : isDeleted
+                          ? 'workspace-feed-change-action--deleted'
+                          : ''
+
+                      return (
+                        <span className={`workspace-feed-change-action ${actionClass}`}>
+                          {actionLabel}
+                        </span>
+                      )
+                    })()}
                     <span className="workspace-feed-change-file">
-                      {renderFeedFileLink(change.fileId, change.fileName || 'Untitled file')}
+                      {activity.activity_description || 'Activity details unavailable.'}
                     </span>
                   </span>
-                  <time className="workspace-feed-change-time" dateTime={feedTimeAttr(change.timestamp)}>
-                    {formatFeedTime(change.timestamp)}
+                  <time
+                    className="workspace-feed-change-time"
+                    dateTime={feedTimeAttr(activity.timestamp)}
+                  >
+                    {formatFeedTime(activity.timestamp)}
                   </time>
                 </li>
               ))}
@@ -3118,11 +3262,11 @@ function Workspace() {
             <form onSubmit={handlePublishPost}>
               <div className="workspace-composer-author">
                 {renderAvatar(
-                  auth.currentUser?.displayName || auth.currentUser?.email || 'You',
-                  auth.currentUser?.photoURL || null
+                  currentUserProfile?.displayName || auth.currentUser?.displayName || auth.currentUser?.email || 'You',
+                  currentUserAvatarUrl
                 )}
                 <span className="workspace-feed-user">
-                  {auth.currentUser?.displayName || auth.currentUser?.email || 'You'}
+                  {currentUserProfile?.displayName || auth.currentUser?.displayName || auth.currentUser?.email || 'You'}
                 </span>
               </div>
 
