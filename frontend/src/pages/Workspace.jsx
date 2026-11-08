@@ -1,4 +1,8 @@
-import { createWorkspacePost } from '../services/workspacePostService'
+import {
+  createWorkspacePost,
+  getWorkspacePosts,
+} from '../services/workspacePostService'
+import { getProjectActivity } from '../services/activityService'
 import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
@@ -10,6 +14,10 @@ import {
   getWorkspaceFile,
 } from '../services/workspaceFileService'
 import './Workspace.css'
+import {
+  getUserAvatar,
+  getUserProfile,
+} from '../services/profileService'
 
 // ---------- Workspace data / file-type definitions ----------
 // Workspace files are persisted through the backend and Firebase Storage.
@@ -204,36 +212,10 @@ const INITIAL_TREE = [
   },
 ]
 
-// ---------- Feed (posts + saved changes) ----------
-// The feed has two separate streams, both local state seeded with samples
-// until a backend exists:
-//
-// - posts: written in the post composer (rich text, images, linked files).
-//   { id, user, avatarUrl, lines, images: [{ id, name, url }],
-//     files: [{ id, name }], timestamp }
-//   `lines` is the formatted body as plain data (see serializeEditor), so it
-//   renders as React elements and never needs innerHTML.
-//   Backend dev: images need uploading to storage (the url here is a
-//   temporary in-browser object URL), and avatarUrl should come from the
-//   user's profile_image_url.
-//
-// - changes (shown on the Activity tab): one entry per file action —
-//   { id, projectId, user, action, fileId, fileName, timestamp } where action
-//   is 'created', 'modified' or 'deleted' (see ACTIVITY_LABELS). Saving no
-//   longer asks for a comment or creates a post.
-
-// Words shown on the Activity tab. Entries with no action are old saves, so
-// they read as Modified; an action we don't know reads as a neutral Updated.
-const ACTIVITY_LABELS = { created: 'Created', modified: 'Modified', deleted: 'Deleted' }
-
-function activityLabel(action) {
-  if (!action) return ACTIVITY_LABELS.modified
-  return ACTIVITY_LABELS[action] ?? 'Updated'
-}
-
-const NOW = Date.now()
-const MINUTE = 60 * 1000
-const HOUR = 60 * MINUTE
+// ---------- Project Feed (posts + activity) ----------
+// Workspace posts and project activity are loaded from the backend.
+// Posts support formatted text, with author avatars retrieved separately.
+// Image attachments and linked files are reserved for future integration.
 
 const MAX_POST_IMAGES = 4
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -242,55 +224,57 @@ function plainLines(text) {
   return text.split('\n').map((line) => [{ text: line }])
 }
 
-const INITIAL_POSTS = [
-  {
-    id: 'post-1',
-    projectId: null,
-    user: 'Veronica Johnson',
-    avatarUrl: null,
-    lines: [
-      [
-        { text: 'Budget update: ', bold: true },
-        { text: 'refreshed hosting and licensing costs to match the latest vendor quotes.' },
-      ],
-      [{ text: 'Let me know if anything looks off before the client review.', italic: true }],
-    ],
-    images: [],
-    files: [{ id: 'file-budget', name: 'Budget.mosheet' }],
-    timestamp: NOW - 45 * MINUTE,
-  },
-  {
-    id: 'post-2',
-    projectId: null,
-    user: 'Lesly Martinez',
-    avatarUrl: null,
-    lines: plainLines('Filtered the user report to active accounts only and sorted by most recent login.'),
-    images: [],
-    files: [{ id: 'file-query', name: 'active_users.sql' }],
-    timestamp: NOW - 5 * HOUR,
-  },
-  {
-    id: 'post-3',
-    projectId: null,
-    user: 'Veronica Johnson',
-    avatarUrl: null,
-    lines: plainLines(
-      'Added the overview section and next steps to the proposal.\nThe pitch deck still needs the problem slide tightened up.'
-    ),
-    images: [],
-    files: [
-      { id: 'file-proposal', name: 'Client Proposal.modoc' },
-      { id: 'file-pitch', name: 'Pitch Deck.moslide' },
-    ],
-    timestamp: NOW - 26 * HOUR,
-  },
-]
+const RICH_POST_TYPE = 'mosalinx-rich-text'
+const RICH_POST_VERSION = 1
+const MAX_POST_CONTENT_BYTES = 65535
 
-const INITIAL_CHANGES = [
-  { id: 'change-1', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-budget', fileName: 'Budget.mosheet', timestamp: NOW - 45 * MINUTE },
-  { id: 'change-2', projectId: null, action: 'modified', user: 'Lesly Martinez', fileId: 'file-query', fileName: 'active_users.sql', timestamp: NOW - 5 * HOUR },
-  { id: 'change-3', projectId: null, action: 'modified', user: 'Veronica Johnson', fileId: 'file-proposal', fileName: 'Client Proposal.modoc', timestamp: NOW - 26 * HOUR },
-]
+// Convert formatted editor lines into a versioned storage string.
+function serializePostContent(lines) {
+  return JSON.stringify({
+    type: RICH_POST_TYPE,
+    version: RICH_POST_VERSION,
+    lines,
+  })
+}
+
+// Restore formatted posts while supporting existing plain-text content.
+function deserializePostContent(content) {
+  if (typeof content !== 'string') {
+    return plainLines('')
+  }
+
+  try {
+    const parsed = JSON.parse(content)
+
+    if (
+      parsed?.type === RICH_POST_TYPE &&
+      parsed.version === RICH_POST_VERSION &&
+      Array.isArray(parsed.lines) &&
+      parsed.lines.every((line) =>
+        Array.isArray(line) &&
+        line.every((run) =>
+          run !== null &&
+          typeof run === 'object' &&
+          typeof run.text === 'string' &&
+          ['bold', 'italic', 'underline'].every((key) =>
+            run[key] === undefined || typeof run[key] === 'boolean'
+          )
+        )
+      )
+    ) {
+      return parsed.lines
+    }
+  } catch {
+    // Existing plain-text posts are not JSON.
+  }
+
+  return plainLines(content)
+}
+
+// Check the actual UTF-8 size against MySQL's TEXT storage limit.
+function postContentFitsStorage(content) {
+  return new TextEncoder().encode(content).length <= MAX_POST_CONTENT_BYTES
+}
 
 // Turns the composer's contentEditable DOM into plain data: an array of
 // lines, each an array of { text, bold, italic, underline } runs. Anything
@@ -840,16 +824,41 @@ function getInitials(name) {
     .toUpperCase()
 }
 
-// Profile picture if the user has one, otherwise a colored initials circle.
-function renderAvatar(name, avatarUrl, extraClass = '') {
+// Display a profile picture, falling back to initials if loading fails.
+function FeedAvatar({ name, avatarUrl, extraClass = '' }) {
+  const [imageFailed, setImageFailed] = useState(false)
   const className = 'workspace-feed-avatar' + (extraClass ? ` ${extraClass}` : '')
-  if (avatarUrl) {
-    return <img className={className + ' workspace-feed-avatar--img'} src={avatarUrl} alt="" />
+
+  if (avatarUrl && !imageFailed) {
+    return (
+      <img
+        className={className + ' workspace-feed-avatar--img'}
+        src={avatarUrl}
+        alt=""
+        onError={() => setImageFailed(true)}
+      />
+    )
   }
+
   return (
-    <span className={className} style={{ background: colorForName(name) }} aria-hidden="true">
+    <span
+      className={className}
+      style={{ background: colorForName(name) }}
+      aria-hidden="true"
+    >
       {getInitials(name)}
     </span>
+  )
+}
+
+function renderAvatar(name, avatarUrl, extraClass = '') {
+  return (
+    <FeedAvatar
+      key={avatarUrl || 'no-avatar'}
+      name={name}
+      avatarUrl={avatarUrl}
+      extraClass={extraClass}
+    />
   )
 }
 
@@ -1099,11 +1108,31 @@ function Workspace() {
   const [explorerOpen, setExplorerOpen] = useState(true)
   const [feedOpen, setFeedOpen] = useState(false)
   const [feedView, setFeedView] = useState('posts')
-  const [posts, setPosts] = useState(INITIAL_POSTS)
-  const [changes, setChanges] = useState(INITIAL_CHANGES)
+
+  // Workspace posts retrieved from the backend.
+  const [posts, setPosts] = useState([])
+  const [postsLoading, setPostsLoading] = useState(false)
+  const [postsError, setPostsError] = useState('')
+
+  // Project activity retrieved from the backend.
+  const [activities, setActivities] = useState([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState('')
+
+  // Request fresh activity after actions that create new feed entries.
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0)
+
+  // Store the authenticated user's Mosalinx profile for the post composer.
+  const [currentUserProfile, setCurrentUserProfile] = useState(null)
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState(null)
+
   const [composerOpen, setComposerOpen] = useState(false)
   const [isPublishingPost, setIsPublishingPost] = useState(false)
   const publishingPostRef = useRef(false)
+
+  // Track the current project during asynchronous post publishing.
+  const activeProjectIdRef = useRef(activeProject?.project_id)
+  activeProjectIdRef.current = activeProject?.project_id
 
   // Save prompt: asks whether a save should also become a post. "Don't ask
   // again" is remembered in this browser only.
@@ -1204,6 +1233,238 @@ function Workspace() {
       cancelled = true
     }
   }, [activeProject?.project_id])
+
+  // Load the current user's Mosalinx identity and uploaded avatar.
+  useEffect(() => {
+    let cancelled = false
+    let avatarUrl = null
+
+    async function loadCurrentUserProfile() {
+      const user = auth.currentUser
+
+      if (!user) {
+        setCurrentUserProfile(null)
+        setCurrentUserAvatarUrl(null)
+        return
+      }
+
+      try {
+        const profile = await getUserProfile(user)
+
+        if (cancelled) return
+
+        setCurrentUserProfile(profile)
+        setCurrentUserAvatarUrl(null)
+
+        if (profile.profileImageUrl && profile.userId) {
+          const avatarBlob = await getUserAvatar(user, profile.userId)
+
+          if (cancelled) return
+
+          avatarUrl = URL.createObjectURL(avatarBlob)
+          setCurrentUserAvatarUrl(avatarUrl)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Unable to load current user profile:', error)
+        }
+      }
+    }
+
+    loadCurrentUserProfile()
+
+    return () => {
+      cancelled = true
+
+      if (avatarUrl) {
+        URL.revokeObjectURL(avatarUrl)
+      }
+    }
+  }, [])
+
+  // Load saved posts whenever the active project changes.
+  useEffect(() => {
+    let cancelled = false
+    const avatarUrls = []
+
+    async function loadProjectPosts() {
+      const projectId = activeProject?.project_id
+      const user = auth.currentUser
+
+      // Clear posts from the previously selected project.
+      setPosts([])
+      setPostsError('')
+      setPostsLoading(Boolean(projectId && user))
+
+      if (!projectId || !user) {
+        return
+      }
+
+      try {
+        const savedPosts = await getWorkspacePosts(user, projectId)
+
+        if (cancelled) return
+
+        // Display posts without waiting for profile pictures.
+        setPosts(savedPosts.map((post) => ({
+          id: post.post_id,
+          projectId: post.project_id,
+          user: post.display_name || 'Unknown User',
+          avatarUrl: null,
+          lines: deserializePostContent(post.post_content || ''),
+          images: [],
+          files: [],
+          timestamp: new Date(post.created_at).getTime(),
+        })))
+
+        setPostsLoading(false)
+
+        // Retrieve each author's avatar only once.
+        const authors = new Map()
+
+        savedPosts.forEach((post) => {
+          if (post.created_by && post.profile_image_url) {
+            authors.set(post.created_by, post.profile_image_url)
+          }
+        })
+
+        await Promise.all(
+          Array.from(authors.keys()).map(async (authorId) => {
+            try {
+              const imageBlob = await getUserAvatar(user, authorId)
+
+              if (cancelled) return
+
+              const objectUrl = URL.createObjectURL(imageBlob)
+              avatarUrls.push(objectUrl)
+
+              setPosts((currentPosts) => currentPosts.map((post) => {
+                const originalPost = savedPosts.find(
+                  (savedPost) => savedPost.post_id === post.id
+                )
+
+                if (originalPost?.created_by !== authorId) {
+                  return post
+                }
+
+                return {
+                  ...post,
+                  avatarUrl: objectUrl,
+                }
+              }))
+            } catch {
+              // Keep initials when an author's picture cannot be retrieved.
+            }
+          })
+        )
+      } catch (error) {
+        if (!cancelled) {
+          setPostsError(error.message || 'Unable to load Workspace posts.')
+          setPosts([])
+        }
+      } finally {
+        if (!cancelled) {
+          setPostsLoading(false)
+        }
+      }
+    }
+
+    loadProjectPosts()
+
+    return () => {
+      cancelled = true
+
+      // Release temporary image URLs when changing projects.
+      avatarUrls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [activeProject?.project_id])
+
+  // Load backend activity and author avatars for the active project.
+  useEffect(() => {
+    let cancelled = false
+    const avatarUrls = []
+
+    async function loadProjectActivity() {
+      const projectId = activeProject?.project_id
+      const user = auth.currentUser
+
+      // Clear activity from the previously selected project.
+      setActivities([])
+      setActivityError('')
+
+      if (!projectId || !user) {
+        setActivityLoading(false)
+        return
+      }
+
+      setActivityLoading(true)
+
+      try {
+        const result = await getProjectActivity(user, projectId)
+
+        if (cancelled) return
+
+        // Display activity immediately while profile pictures load.
+        setActivities(result.map((activity) => ({
+          ...activity,
+          avatarUrl: null,
+        })))
+
+        setActivityLoading(false)
+
+        // Retrieve each author's avatar only once.
+        const authors = new Map()
+
+        result.forEach((activity) => {
+          if (activity.user_id && activity.profile_image_url) {
+            authors.set(activity.user_id, true)
+          }
+        })
+
+        await Promise.all(
+          Array.from(authors.keys()).map(async (authorId) => {
+            try {
+              const imageBlob = await getUserAvatar(user, authorId)
+
+              if (cancelled) return
+
+              const objectUrl = URL.createObjectURL(imageBlob)
+              avatarUrls.push(objectUrl)
+
+              setActivities((currentActivities) =>
+                currentActivities.map((activity) => (
+                  String(activity.user_id) === String(authorId)
+                    ? { ...activity, avatarUrl: objectUrl }
+                    : activity
+                ))
+              )
+            } catch {
+              // Fall back to initials if an avatar cannot be retrieved.
+            }
+          })
+        )
+      } catch (error) {
+        if (!cancelled) {
+          setActivityError(
+            error.message || 'Unable to load project activity.'
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setActivityLoading(false)
+        }
+      }
+    }
+
+    loadProjectActivity()
+
+    return () => {
+      cancelled = true
+
+      // Release temporary image URLs when changing projects.
+      avatarUrls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [activeProject?.project_id, activityRefreshKey])
 
   // Prevent project changes from interrupting saves or silently losing edits.
   const handleProjectChange = (event) => {
@@ -1475,9 +1736,6 @@ function Workspace() {
         throw new Error('The saved file did not return a database ID.')
       }
 
-      const userName =
-        user.displayName || user.email || 'You'
-
       setTree((prev) =>
         updateNode(prev, selectedNode.id, (node) => ({
           ...node,
@@ -1485,19 +1743,6 @@ function Workspace() {
           dirty: (node.revision ?? 0) !== savingRevision,
         }))
       )
-
-      setChanges((prev) => [
-        {
-          id: nextId(),
-          projectId,
-          action: 'modified',
-          user: userName,
-          fileId: selectedNode.id,
-          fileName: selectedNode.name,
-          timestamp: Date.now(),
-        },
-        ...prev,
-      ])
 
       return true
     } catch (error) {
@@ -1624,92 +1869,103 @@ function Workspace() {
     setComposerFileIds((prev) => (prev.includes(id) ? prev.filter((fileId) => fileId !== id) : [...prev, id]))
   }
 
-async function handlePublishPost(event) {
-  event.preventDefault()
+  async function handlePublishPost(event) {
+    event.preventDefault()
 
-  if (publishingPostRef.current) return
+    if (publishingPostRef.current) return
 
-  const editor = composerEditorRef.current
-  if (!editor) return
+    const editor = composerEditorRef.current
+    if (!editor) return
 
-  setComposerError('')
+    setComposerError('')
 
-  const lines = serializeEditor(editor)
-  const hasText = linesHaveText(lines)
+    const lines = serializeEditor(editor)
+    const hasText = linesHaveText(lines)
 
-  if (!hasText) {
-    setComposerError('Write something before posting.')
-    return
+    if (!hasText) {
+      setComposerError('Write something before posting.')
+      return
+    }
+
+    if (composerImages.length > 0 || composerFileIds.length > 0) {
+      setComposerError(
+        'Image and file attachments are not supported for posts yet. Remove your attachments before publishing.'
+      )
+      return
+    }
+
+    const currentUser = auth.currentUser
+    const projectId = activeProject?.project_id
+
+    if (!currentUser) {
+      setComposerError('Your session has expired. Please sign in again.')
+      return
+    }
+
+    if (!projectId) {
+      setComposerError('Select a project before creating a post.')
+      return
+    }
+
+    // Preserve formatted text using the versioned rich-text format.
+    const postContent = serializePostContent(lines)
+
+    if (!postContentFitsStorage(postContent)) {
+      setComposerError('This post is too long. Please shorten it before publishing.')
+      return
+    }
+
+    publishingPostRef.current = true
+    setIsPublishingPost(true)
+
+    try {
+      const createdPost = await createWorkspacePost(
+        currentUser,
+        projectId,
+        postContent
+      )
+
+      // Do not update the feed if the user switched projects while saving.
+      if (activeProjectIdRef.current !== projectId) {
+        return
+      }
+
+      // Reuse the author's loaded avatar when publishing a new post.
+      setPosts((prev) => {
+        const existingAuthorPost = prev.find(
+          (post) => post.user === createdPost.displayName && post.avatarUrl
+        )
+
+        return [
+          {
+            id: createdPost.postId,
+            projectId: createdPost.projectId,
+            user: createdPost.displayName || 'Unknown User',
+            avatarUrl: existingAuthorPost?.avatarUrl || null,
+            lines: deserializePostContent(createdPost.postContent),
+            images: [],
+            files: [],
+            timestamp: Date.now(),
+          },
+          ...prev,
+        ]
+      })
+
+      // Refresh project activity after successfully publishing a post.
+      setActivityRefreshKey((prev) => prev + 1)
+
+      setComposerOpen(false)
+      setFeedView('posts')
+      setFeedOpen(true)
+    } catch (error) {
+      setComposerError(
+        error.message || 'Unable to publish your post. Please try again.'
+      )
+    } finally {
+      publishingPostRef.current = false
+      setIsPublishingPost(false)
+    }
   }
-
-  if (composerImages.length > 0 || composerFileIds.length > 0) {
-    setComposerError(
-      'Image and file attachments are not supported for posts yet. Remove your attachments before publishing.'
-    )
-    return
-  }
-
-  const currentUser = auth.currentUser
-  const projectId = activeProject?.project_id
-
-  if (!currentUser) {
-    setComposerError('Your session has expired. Please sign in again.')
-    return
-  }
-
-  if (!projectId) {
-    setComposerError('Select a project before creating a post.')
-    return
-  }
-
-  // Convert formatted editor lines into the plain text accepted by the API.
-  const postContent = lines
-    .map((runs) => runs.map((run) => run.text).join(''))
-    .join('\n')
-    .trim()
-
-  if (!postContent) {
-    setComposerError('Write something before posting.')
-    return
-  }
-
-  publishingPostRef.current = true
-  setIsPublishingPost(true)
-
-  try {
-    const createdPost = await createWorkspacePost(
-      currentUser,
-      projectId,
-      postContent
-    )
-
-    // Add the post to the feed only after the API confirms creation.
-    setPosts((prev) => [
-      {
-        id: createdPost.postId,
-        projectId: createdPost.projectId,
-        user: currentUser.displayName || currentUser.email || 'You',
-        avatarUrl: currentUser.photoURL || null,
-        lines: plainLines(createdPost.postContent),
-        images: [],
-        files: [],
-        timestamp: Date.now(),
-      },
-      ...prev,
-    ])
-
-    setComposerOpen(false)
-    setFeedView('posts')
-    setFeedOpen(true)
-  } catch (error) {
-    setComposerError(
-      error.message || 'Unable to publish your post. Please try again.'
-    )
-  } finally {
-    publishingPostRef.current = false
-    setIsPublishingPost(false)
-  }
-}
 
   function createNewFile(type) {
     const typeInfo = FILE_TYPES[type]
@@ -1729,18 +1985,7 @@ async function handlePublishPost(event) {
     const targetFolder = DEFAULT_FILE_FOLDERS[type] ?? 'ROOT'
 
     setTree((prev) => insertNode(prev, targetFolder, newNode))
-    setChanges((prev) => [
-      {
-        id: nextId(),
-        projectId: activeProject?.project_id ?? null,
-        action: 'created',
-        user: auth.currentUser?.displayName || auth.currentUser?.email || 'You',
-        fileId: newNode.id,
-        fileName: newNode.name,
-        timestamp: Date.now(),
-      },
-      ...prev,
-    ])
+
     if (targetFolder !== 'ROOT') {
       setExpandedFolders((prev) => new Set(prev).add(targetFolder))
     }
@@ -2374,11 +2619,18 @@ async function handlePublishPost(event) {
   }
 
   function renderFeed() {
-    // Only this project's entries (the sample entries have no project, so
-    // they show everywhere until real data exists).
-    const inProject = (item) => !item.projectId || item.projectId === activeProject?.project_id
-    const projectPosts = sortByNewest(posts.filter(inProject))
-    const projectChanges = sortByNewest(changes.filter(inProject))
+    // Display only posts belonging to the selected project.
+    const projectPosts = sortByNewest(
+      posts.filter((post) => post.projectId === activeProject?.project_id)
+    )
+
+    // Prepare backend activity records for newest-first display.
+    const projectActivities = sortByNewest(
+      activities.map((activity) => ({
+        ...activity,
+        timestamp: activity.created_at,
+      }))
+    )
 
     return (
       <div className="workspace-feed">
@@ -2419,8 +2671,18 @@ async function handlePublishPost(event) {
 
         <div id="feed-panel" role="tabpanel" aria-labelledby={'feed-tab-' + feedView}>
           {feedView === 'posts' ? (
-            projectPosts.length === 0 ? (
-              <p className="workspace-feed-empty">No posts yet. Click New Post to share an update with your team.</p>
+            postsLoading ? (
+              <p className="workspace-feed-empty" role="status">
+                Loading Workspace posts...
+              </p>
+            ) : postsError ? (
+              <p className="workspace-feed-empty" role="alert">
+                {postsError}
+              </p>
+            ) : projectPosts.length === 0 ? (
+              <p className="workspace-feed-empty">
+                No posts yet. Click New Post to share an update with your team.
+              </p>
             ) : (
               <div className="workspace-feed-posts">
                 {projectPosts.map((post) => (
@@ -2463,28 +2725,65 @@ async function handlePublishPost(event) {
                 ))}
               </div>
             )
-          ) : projectChanges.length === 0 ? (
-            <p className="workspace-feed-empty">No activity yet. Create or save a file to see it here.</p>
+          ) : activityLoading ? (
+            <p className="workspace-feed-empty">Loading activity...</p>
+          ) : activityError ? (
+            <p className="workspace-feed-empty" role="alert">
+              {activityError}
+            </p>
+          ) : projectActivities.length === 0 ? (
+            <p className="workspace-feed-empty">No activity recorded for this project yet.</p>
           ) : (
             <ul className="workspace-feed-changes">
-              {projectChanges.map((change) => (
-                <li key={change.id} className="workspace-feed-change">
+              {projectActivities.map((activity) => (
+                <li key={activity.activity_id} className="workspace-feed-change">
                   <span className="workspace-feed-change-text">
-                    <span className="workspace-feed-change-user">{change.user || 'Someone'}</span>
-                    <span
-                      className={
-                        'workspace-feed-change-action workspace-feed-change-action--' +
-                        (ACTIVITY_LABELS[change.action] ? change.action : 'modified')
-                      }
-                    >
-                      {activityLabel(change.action)}
+                    {renderAvatar(
+                      activity.display_name || 'Someone',
+                      activity.avatarUrl
+                    )}
+                    <span className="workspace-feed-change-user">
+                      {activity.display_name || 'Someone'}
                     </span>
+                    {(() => {
+                      const activityType = activity.activity_type || ''
+                      const isCreated =
+                        activityType.endsWith('_created') ||
+                        activityType.endsWith('_uploaded')
+                      const isModified =
+                        activityType.endsWith('_updated') ||
+                        activityType.endsWith('_modified')
+                      const isDeleted = activityType.endsWith('_deleted')
+
+                      const actionLabel = isCreated
+                        ? 'Created'
+                        : isModified
+                          ? 'Modified'
+                          : isDeleted
+                            ? 'Deleted'
+                            : 'Activity'
+
+                      const actionClass = isCreated
+                        ? 'workspace-feed-change-action--created'
+                        : isDeleted
+                          ? 'workspace-feed-change-action--deleted'
+                          : ''
+
+                      return (
+                        <span className={`workspace-feed-change-action ${actionClass}`}>
+                          {actionLabel}
+                        </span>
+                      )
+                    })()}
                     <span className="workspace-feed-change-file">
-                      {renderFeedFileLink(change.fileId, change.fileName || 'Untitled file')}
+                      {activity.activity_description || 'Activity details unavailable.'}
                     </span>
                   </span>
-                  <time className="workspace-feed-change-time" dateTime={feedTimeAttr(change.timestamp)}>
-                    {formatFeedTime(change.timestamp)}
+                  <time
+                    className="workspace-feed-change-time"
+                    dateTime={feedTimeAttr(activity.timestamp)}
+                  >
+                    {formatFeedTime(activity.timestamp)}
                   </time>
                 </li>
               ))}
@@ -2963,11 +3262,11 @@ async function handlePublishPost(event) {
             <form onSubmit={handlePublishPost}>
               <div className="workspace-composer-author">
                 {renderAvatar(
-                  auth.currentUser?.displayName || auth.currentUser?.email || 'You',
-                  auth.currentUser?.photoURL || null
+                  currentUserProfile?.displayName || auth.currentUser?.displayName || auth.currentUser?.email || 'You',
+                  currentUserAvatarUrl
                 )}
                 <span className="workspace-feed-user">
-                  {auth.currentUser?.displayName || auth.currentUser?.email || 'You'}
+                  {currentUserProfile?.displayName || auth.currentUser?.displayName || auth.currentUser?.email || 'You'}
                 </span>
               </div>
 
@@ -3072,30 +3371,30 @@ async function handlePublishPost(event) {
               )}
 
               {composerFileIds.length > 0 && (
-  <div className="workspace-composer-chips">
-    {composerFileIds.map((id) => {
-      const file = flattenFiles(tree).find((candidate) => candidate.id === id)
-      if (!file) return null
+                <div className="workspace-composer-chips">
+                  {composerFileIds.map((id) => {
+                    const file = flattenFiles(tree).find((candidate) => candidate.id === id)
+                    if (!file) return null
 
-      return (
-        <span key={id} className="workspace-composer-chip">
-          <span className="workspace-tree-icon">
-            {FILE_TYPES[file.type]?.icon ?? ICONS.document}
-          </span>
-          {file.name}
-          <button
-            type="button"
-            className="workspace-composer-chip-remove"
-            onClick={() => toggleComposerFile(id)}
-            aria-label={`Unlink ${file.name}`}
-          >
-            ×
-          </button>
-        </span>
-      )
-    })}
-  </div>
-)}
+                    return (
+                      <span key={id} className="workspace-composer-chip">
+                        <span className="workspace-tree-icon">
+                          {FILE_TYPES[file.type]?.icon ?? ICONS.document}
+                        </span>
+                        {file.name}
+                        <button
+                          type="button"
+                          className="workspace-composer-chip-remove"
+                          onClick={() => toggleComposerFile(id)}
+                          aria-label={`Unlink ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
 
               {composerPickerOpen && (
                 <div className="workspace-composer-picker">
@@ -3119,28 +3418,28 @@ async function handlePublishPost(event) {
               )}
 
               {composerError && (
-                  <p className="workspace-modal-error" role="alert">
-                    {composerError}
-                  </p>
-                )}
+                <p className="workspace-modal-error" role="alert">
+                  {composerError}
+                </p>
+              )}
 
-                <div className="workspace-modal-actions">
-                  <button
-                    type="button"
-                    className="workspace-modal-cancel"
-                    onClick={closeComposer}
-                    disabled={isPublishingPost}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="workspace-modal-create"
-                    disabled={isPublishingPost}
-                  >
-                    {isPublishingPost ? 'Posting...' : 'Post'}
-                  </button>
-                </div>
+              <div className="workspace-modal-actions">
+                <button
+                  type="button"
+                  className="workspace-modal-cancel"
+                  onClick={closeComposer}
+                  disabled={isPublishingPost}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="workspace-modal-create"
+                  disabled={isPublishingPost}
+                >
+                  {isPublishingPost ? 'Posting...' : 'Post'}
+                </button>
+              </div>
             </form>
           </div>
         </div>

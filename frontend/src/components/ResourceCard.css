@@ -198,3 +198,27 @@
         max-width: none;
     }
 }
+
+/* Delete is a destructive action, so it uses a red outline instead of
+   the standard black button and only fills in on hover or focus. */
+.resource-card button.resource-card-delete {
+    border-color: #b42318;
+    background: #ffffff;
+    color: #b42318;
+}
+
+.resource-card button.resource-card-delete:hover:not(:disabled) {
+    border-color: #b42318;
+    background: #b42318;
+    color: #ffffff;
+}
+
+.resource-card button.resource-card-delete:focus-visible {
+    outline-color: #b42318;
+}
+
+.resource-card button.resource-card-delete:disabled {
+    border-color: #c9c9c9;
+    background: #f1f1f1;
+    color: #a2a6ab;
+}

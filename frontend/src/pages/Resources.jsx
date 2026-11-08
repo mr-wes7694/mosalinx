@@ -47,6 +47,12 @@ function Resources() {
     return isProjectOwner || isOriginalUploader;
   };
 
+  // Show Delete only to the original uploader or the Project Owner of the
+  // resource's project. These are the same people who may edit a resource,
+  // but the rule is kept separate so the two permissions can diverge.
+  // This only controls what is shown; the backend still enforces access.
+  const canDeleteResource = (resource) => canEditResource(resource);
+
   // Track backend Resource Search results and request state separately
   // from the complete project repository.
   const [searchResults, setSearchResults] = useState([]);
@@ -322,6 +328,62 @@ function Resources() {
     return data.resource;
   };
 
+  // INTEGRATION POINT: Resource Delete API workflow.
+  // The confirmation modal calls this after the user selects Confirm
+  // Delete. Resolve to report success (the resource is then removed from
+  // the visible lists) or throw an Error whose message is shown in the
+  // modal so the user can retry or cancel.
+  const handleDeleteResource = async (resource) => {
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      throw new Error("You must be signed in to delete a resource.");
+    }
+
+    let response;
+
+    try {
+      const token = await currentUser.getIdToken();
+
+      response = await fetch(
+        `${API_URL}/${resource.resource_id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+    } catch {
+      throw new Error(
+        "Unable to reach the server. Please try again."
+      );
+    }
+
+    if (!response.ok) {
+      let message = "Failed to delete resource.";
+
+      try {
+        const data = await response.json();
+        message = data.message || message;
+      } catch {
+        // The response may be a non-JSON error.
+      }
+
+      throw new Error(message);
+    }
+
+    // Keep repository and search views consistent without a reload.
+    const withoutDeleted = (previousResources) =>
+      previousResources.filter(
+        (existingResource) =>
+          existingResource.resource_id !== resource.resource_id
+      );
+
+    setResources(withoutDeleted);
+    setSearchResults(withoutDeleted);
+  };
+
   // Refresh the repository and close the upload form after a successful upload.
   const handleUploadSuccess = async () => {
     setShowUpload(false);
@@ -420,6 +482,8 @@ function Resources() {
           onDownload={handleDownload}
           canEditResource={canEditResource}
           onSaveCategory={handleSaveCategory}
+          canDeleteResource={canDeleteResource}
+          onDeleteResource={handleDeleteResource}
           onSearchStateChange={setSearchActive}
           downloadingId={downloadingId}
           loading={searchLoading}
@@ -479,6 +543,8 @@ function Resources() {
                     }
                     canEdit={canEditResource(resource)}
                     onSaveCategory={handleSaveCategory}
+                    canDelete={canDeleteResource(resource)}
+                    onDelete={handleDeleteResource}
                   />
                 ))}
               </div>
