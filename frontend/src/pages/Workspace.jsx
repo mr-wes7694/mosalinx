@@ -2511,15 +2511,36 @@ async function handlePublishPost(event) {
                     <span className="workspace-feed-change-user">
                       {activity.display_name || 'Someone'}
                     </span>
-                    <span
-                      className={`workspace-feed-change-action ${
-                        activity.activity_type === 'resource_uploaded'
-                          ? 'workspace-feed-change-action--created'
-                          : 'workspace-feed-change-action--modified'
-                      }`}
-                    >
-                      {activity.activity_type === 'resource_uploaded' ? 'Created' : 'Modified'}
-                    </span>
+                    {(() => {
+                      const activityType = activity.activity_type || ''
+                      const isCreated =
+                        activityType.endsWith('_created') ||
+                        activityType.endsWith('_uploaded')
+                      const isModified =
+                        activityType.endsWith('_updated') ||
+                        activityType.endsWith('_modified')
+                      const isDeleted = activityType.endsWith('_deleted')
+
+                      const actionLabel = isCreated
+                        ? 'Created'
+                        : isModified
+                          ? 'Modified'
+                          : isDeleted
+                            ? 'Deleted'
+                            : 'Activity'
+
+                      const actionClass = isCreated
+                        ? 'workspace-feed-change-action--created'
+                        : isDeleted
+                          ? 'workspace-feed-change-action--deleted'
+                          : ''
+
+                      return (
+                        <span className={`workspace-feed-change-action ${actionClass}`}>
+                          {actionLabel}
+                        </span>
+                      )
+                    })()}
                     <span className="workspace-feed-change-file">
                       {activity.activity_description || 'Activity details unavailable.'}
                     </span>
