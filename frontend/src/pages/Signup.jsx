@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { registerUser } from '../services/authService'
+import { useAuth } from '../hooks/useAuth.js'
 import './Signup.css'
 
 function Signup() {
@@ -10,6 +11,7 @@ function Signup() {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const navigate = useNavigate()
+  const { beginRegistration, endRegistration } = useAuth()
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -26,6 +28,7 @@ function Signup() {
     }
 
     setIsSubmitting(true)
+    beginRegistration()
 
     try {
       await registerUser(email, password)
@@ -37,6 +40,7 @@ function Signup() {
         setError(err.message || 'Something went wrong. Please try again.')
       }
     } finally {
+      endRegistration()
       setIsSubmitting(false)
     }
   }
