@@ -51,6 +51,16 @@ export const registerUser = async (email, password, displayName) => {
                 "Failed to clean up Firebase user after backend registration failure:",
                 cleanupError
             );
+
+            // Sign out if account deletion fails to prevent an incomplete session.
+            try {
+                await signOut(auth);
+            } catch (signOutError) {
+                console.error(
+                    "Failed to sign out after registration cleanup failure:",
+                    signOutError
+                );
+            }
         }
 
         throw error;

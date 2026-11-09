@@ -17,6 +17,22 @@ export function AuthProvider({ children }) {
     // Track authentication changes to prevent stale profile responses.
     const authVersionRef = useRef(0);
 
+    // Track account registration before Firebase changes authentication state.
+    const registrationInProgressRef = useRef(false);
+    const [registrationInProgress, setRegistrationInProgress] = useState(false);
+
+    // Suspend automatic profile loading while backend registration is pending.
+    const beginRegistration = () => {
+        registrationInProgressRef.current = true;
+        setRegistrationInProgress(true);
+    };
+
+    // Resume profile initialization when registration finishes.
+    const endRegistration = () => {
+        registrationInProgressRef.current = false;
+        setRegistrationInProgress(false);
+    };
+
     // Keep the shared authentication state synchronized with Firebase.
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -35,9 +51,9 @@ export function AuthProvider({ children }) {
         return unsubscribe;
     }, []);
 
-    // Load the persisted profile whenever the authenticated user changes.
+    // Load the persisted profile only when registration is complete.
     useEffect(() => {
-        if (loading || !currentUser) return;
+        if (loading || !currentUser || registrationInProgress) return;
 
         const requestVersion = authVersionRef.current;
 
@@ -50,18 +66,30 @@ export function AuthProvider({ children }) {
             try {
                 const profile = await getUserProfile(currentUser);
 
-                // Ignore responses from a previous authentication state.
-                if (cancelled || requestVersion !== authVersionRef.current) return;
+                // Ignore stale responses or requests interrupted by registration.
+                if (
+                    cancelled ||
+                    registrationInProgressRef.current ||
+                    requestVersion !== authVersionRef.current
+                ) return;
 
                 setUserProfile(profile);
             } catch (error) {
-                if (cancelled || requestVersion !== authVersionRef.current) return;
+                if (
+                    cancelled ||
+                    registrationInProgressRef.current ||
+                    requestVersion !== authVersionRef.current
+                ) return;
 
                 setUserProfile(null);
                 setProfileError(error.message || "Failed to load user profile.");
             } finally {
                 // Only finish loading for the active profile request.
-                if (!cancelled && requestVersion === authVersionRef.current) {
+                if (
+                    !cancelled &&
+                    !registrationInProgressRef.current &&
+                    requestVersion === authVersionRef.current
+                ) {
                     setProfileLoading(false);
                 }
             }
@@ -72,7 +100,7 @@ export function AuthProvider({ children }) {
         return () => {
             cancelled = true;
         };
-    }, [currentUser, loading]);
+    }, [currentUser, loading, registrationInProgress]);
 
     return (
         <AuthContext.Provider
@@ -83,6 +111,8 @@ export function AuthProvider({ children }) {
                 setUserProfile,
                 profileLoading,
                 profileError,
+                beginRegistration,
+                endRegistration,
             }}
         >
             {children}
