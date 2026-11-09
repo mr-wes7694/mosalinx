@@ -683,6 +683,21 @@ const deleteResource = async (req, res) => {
             });
         }
 
+        // Record the category change without interrupting the successful update.
+        try {
+            await createActivityLog(
+                resource.project_id,
+                user.user_id,
+                'resource_updated',
+                `Resource "${resource.resource_name}" category was updated to "${category ?? 'Uncategorized'}".`
+            );
+        } catch (activityLogError) {
+            console.error(
+                'Error recording resource update activity:',
+                activityLogError
+            );
+        }
+
         // Return the updated resource for the frontend.
         const updatedResource = await findResourceById(resource.resource_id);
 
