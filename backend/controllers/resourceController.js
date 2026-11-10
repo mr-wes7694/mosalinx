@@ -560,6 +560,21 @@ const deleteResource = async (req, res) => {
             });
         }
 
+        // Record the deletion without interrupting Storage cleanup if logging fails.
+        try {
+            await createActivityLog(
+                resource.project_id,
+                user.user_id,
+                'resource_deleted',
+                `Resource "${resource.resource_name}" was deleted.`
+            );
+        } catch (activityLogError) {
+            console.error(
+                'Error recording resource deletion activity:',
+                activityLogError
+            );
+        }
+
         // Delete the Storage file after the database confirms deletion.
         await deleteResourceStorageFile(
             resource.storage_path
@@ -666,6 +681,21 @@ const deleteResource = async (req, res) => {
             return res.status(404).json({
                 message: 'Resource could not be updated because it no longer exists.',
             });
+        }
+
+        // Record the category change without interrupting the successful update.
+        try {
+            await createActivityLog(
+                resource.project_id,
+                user.user_id,
+                'resource_updated',
+                `Resource "${resource.resource_name}" category was updated to "${category ?? 'Uncategorized'}".`
+            );
+        } catch (activityLogError) {
+            console.error(
+                'Error recording resource update activity:',
+                activityLogError
+            );
         }
 
         // Return the updated resource for the frontend.

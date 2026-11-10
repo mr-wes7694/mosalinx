@@ -9,11 +9,18 @@ deleteStorage: 0,
 deleteRecord: 0,
 storageFile: 0,
 stream: 0,
+activityLog: 0,
 };
 
 let resourceToReturn;
 let deleteRecordResult = true;
+let updateCategoryResult = true;
 let storageExists = true;
+let activityLogError = null;
+let projectPermissionResult = {
+    allowed: true,
+    role: 'owner',
+};
 
 // Mock the resource model.
 const resourceModelPath = require.resolve('../models/resourceModel');
@@ -34,7 +41,7 @@ return deleteRecordResult;
 isProjectMember: async () => true,
 createResource: async () => ({}),
 updateResourceStoragePath: async () => {},
-updateResourceCategory: async () => true,
+updateResourceCategory: async () => updateCategoryResult,
 deleteResourceById: async () => {},
 findResourcesByProject: async () => [],
 searchResourcesByProject: async () => [],
@@ -75,10 +82,7 @@ id: permissionsPath,
 filename: permissionsPath,
 loaded: true,
 exports: {
-checkProjectPermission: async () => ({
-allowed: true,
-role: 'owner',
-}),
+checkProjectPermission: async () => projectPermissionResult,
 },
 };
 
@@ -132,6 +136,38 @@ return true;
 },
 };
 
+// Mock activity logging.
+const activityLogPath = require.resolve('../models/activityLogModel');
+
+const activityLogs = [];
+
+require.cache[activityLogPath] = {
+    id: activityLogPath,
+    filename: activityLogPath,
+    loaded: true,
+    exports: {
+        createActivityLog: async (
+            projectId,
+            userId,
+            activityType,
+            activityDescription
+        ) => {
+            calls.activityLog++;
+
+            if (activityLogError) {
+                throw activityLogError;
+            }
+
+            activityLogs.push({
+                projectId,
+                userId,
+                activityType,
+                activityDescription,
+            });
+        },
+    },
+};
+
 const controller = require('../controllers/resourceController');
 
 const makeResponse = () => ({
@@ -181,14 +217,22 @@ storage_path: 'projects/1/workspace/10_notes.json',
 });
 
 const reset = (resource) => {
-Object.keys(calls).forEach((key) => {
-calls[key] = 0;
-});
+    activityLogs.length = 0;
 
-resourceToReturn = resource;
-deleteRecordResult = true;
-storageExists = true;
+    Object.keys(calls).forEach((key) => {
+        calls[key] = 0;
+    });
 
+    activityLogError = null;
+    projectPermissionResult = {
+        allowed: true,
+        role: 'owner',
+    };
+
+    resourceToReturn = resource;
+    deleteRecordResult = true;
+    updateCategoryResult = true;
+    storageExists = true;
 };
 
 // Workspace downloads must be rejected before Storage access.
@@ -231,6 +275,8 @@ await controller.deleteResource(makeRequest(), res);
 assert.equal(res.statusCode, 404);
 assert.equal(calls.deleteStorage, 0);
 assert.equal(calls.deleteRecord, 0);
+assert.equal(calls.activityLog, 0);
+assert.equal(activityLogs.length, 0);
 
 });
 
@@ -246,7 +292,30 @@ assert.equal(res.statusCode, 200);
 assert.equal(calls.deleteStorage, 1);
 assert.equal(calls.deleteRecord, 1);
 assert.equal(res.body.message, 'Resource deleted successfully.');
+assert.equal(calls.activityLog, 1);
+assert.deepEqual(activityLogs[0], {
+    projectId: 1,
+    userId: 7,
+    activityType: 'resource_deleted',
+    activityDescription: 'Resource "notes.txt" was deleted.',
+});
 
+});
+
+// Storage cleanup should still happen if activity logging fails.
+test('ordinary resource delete cleans up Storage when activity logging fails', async () => {
+    reset(ordinaryResource());
+    activityLogError = new Error('Activity log unavailable');
+
+    const res = makeResponse();
+
+    await controller.deleteResource(makeRequest(), res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.deleteRecord, 1);
+    assert.equal(calls.activityLog, 1);
+    assert.equal(calls.deleteStorage, 1);
+    assert.equal(activityLogs.length, 0);
 });
 
 // A missing database record must not be reported as deleted.
@@ -261,5 +330,86 @@ await controller.deleteResource(makeRequest(), res);
 assert.equal(res.statusCode, 404);
 assert.equal(calls.deleteStorage, 0);
 assert.equal(calls.deleteRecord, 1);
+assert.equal(calls.activityLog, 0);
+assert.equal(activityLogs.length, 0);
 
+});
+
+// Successful category updates should create an activity log.
+test('resource category update records activity', async () => {
+    reset(ordinaryResource());
+
+    const req = makeRequest();
+    req.body = { category: 'document' };
+
+    const res = makeResponse();
+
+    await controller.updateResourceMetadata(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.message, 'Resource category updated successfully.');
+    assert.equal(calls.activityLog, 1);
+    assert.deepEqual(activityLogs[0], {
+        projectId: 1,
+        userId: 7,
+        activityType: 'resource_updated',
+        activityDescription:
+            'Resource "notes.txt" category was updated to "document".',
+    });
+});
+
+// Unauthorized category updates must not create activity logs.
+test('unauthorized resource category update does not record activity', async () => {
+    reset(ordinaryResource());
+
+    projectPermissionResult = {
+    allowed: false,
+    role: null,
+    };
+
+    const req = makeRequest();
+    req.body = { category: 'document' };
+
+    const res = makeResponse();
+
+    await controller.updateResourceMetadata(req, res);
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(calls.activityLog, 0);
+    assert.equal(activityLogs.length, 0);
+
+});
+
+// Failed database updates must not create activity logs.
+test('failed resource category update does not record activity', async () => {
+    reset(ordinaryResource());
+    updateCategoryResult = false;
+
+    const req = makeRequest();
+    req.body = { category: 'document' };
+
+    const res = makeResponse();
+
+    await controller.updateResourceMetadata(req, res);
+
+    assert.equal(res.statusCode, 404);
+    assert.equal(calls.activityLog, 0);
+    assert.equal(activityLogs.length, 0);
+});
+
+// Logging failures must not undo a successful category update.
+test('resource category update succeeds when activity logging fails', async () => {
+    reset(ordinaryResource());
+    activityLogError = new Error('Activity log unavailable');
+
+    const req = makeRequest();
+    req.body = { category: 'document' };
+
+    const res = makeResponse();
+
+    await controller.updateResourceMetadata(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.activityLog, 1);
+    assert.equal(activityLogs.length, 0);
 });
