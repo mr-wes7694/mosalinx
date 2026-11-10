@@ -1,0 +1,4 @@
+ALTER TABLE users
+ADD COLUMN birthdate DATE NULL AFTER bio,
+ADD COLUMN gender VARCHAR(50) NULL AFTER birthdate,
+ADD COLUMN pronouns VARCHAR(50) NULL AFTER gender;
