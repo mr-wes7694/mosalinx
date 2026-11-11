@@ -29,6 +29,9 @@ const findUserByFirebaseUid = async (firebaseUid) => {
             email,
             profile_image_url,
             bio,
+            birthdate,
+            gender,
+            pronouns,
             created_at,
             updated_at
         FROM users
@@ -58,6 +61,21 @@ const updateUserProfileByFirebaseUid = async (firebaseUid, updates) => {
   if (updates.bio !== undefined) {
     fields.push('bio = ?');
     values.push(updates.bio);
+  }
+
+  if (updates.birthdate !== undefined) {
+    fields.push('birthdate = ?');
+    values.push(updates.birthdate);
+  }
+
+  if (updates.gender !== undefined) {
+    fields.push('gender = ?');
+    values.push(updates.gender);
+  }
+
+  if (updates.pronouns !== undefined) {
+    fields.push('pronouns = ?');
+    values.push(updates.pronouns);
   }
 
   if (fields.length === 0) {

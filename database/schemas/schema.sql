@@ -7,6 +7,9 @@ CREATE TABLE users (
     email VARCHAR(255) NOT NULL UNIQUE,
     profile_image_url VARCHAR(500),
     bio VARCHAR(500),
+    birthdate DATE NULL,
+    gender VARCHAR(50) NULL,
+    pronouns VARCHAR(50) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP

@@ -5,21 +5,65 @@ const {
   createUser
 } = require('../models/userModel');
 
+const GENDER_OPTIONS = [
+  'Male',
+  'Female',
+  'Non-binary',
+  'Prefer not to say',
+];
+
+// Return dates in the format required by HTML date inputs.
+const formatBirthdate = (birthdate) => {
+  if (!birthdate) return null;
+
+  if (birthdate instanceof Date) {
+    return birthdate.toISOString().slice(0, 10);
+  }
+
+  return String(birthdate).slice(0, 10);
+};
+
+// Keep personal profile fields in the authenticated user's response.
+const formatUserProfile = (user) => ({
+  userId: user.user_id,
+  displayName: user.display_name,
+  email: user.email,
+  profileImageUrl: user.profile_image_url,
+  bio: user.bio,
+  birthdate: formatBirthdate(user.birthdate),
+  gender: user.gender,
+  pronouns: user.pronouns,
+  createdAt: user.created_at,
+  updatedAt: user.updated_at,
+});
+
+// Validate a real calendar date and prevent future birthdates.
+const isValidBirthdate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsedDate = new Date(`${value}T00:00:00.000Z`);
+
+  return (
+    !Number.isNaN(parsedDate.getTime()) &&
+    parsedDate.toISOString().slice(0, 10) === value &&
+    value <= new Date().toISOString().slice(0, 10)
+  );
+};
+
 // Register a new Mosalinx user after Firebase account creation.
 const registerUser = async (req, res) => {
   const { displayName, email } = req.body || {};
 
-  // Firebase middleware provides the authenticated user's UID.
   const firebaseUid = req.user?.uid;
 
-  // Make sure the request is authenticated.
   if (!firebaseUid) {
     return res.status(401).json({
       message: 'Unauthorized.',
     });
   }
 
-  // Make sure the required registration information was provided.
   if (!email) {
     return res.status(400).json({
       message: 'Email is required.',
@@ -27,7 +71,6 @@ const registerUser = async (req, res) => {
   }
 
   try {
-    // Check whether this Firebase account is already registered.
     const existingFirebaseUser = await findUserByFirebaseUid(firebaseUid);
 
     if (existingFirebaseUser) {
@@ -37,7 +80,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Check whether the email is already being used.
     const existingEmailUser = await findUserByEmail(email);
 
     if (existingEmailUser) {
@@ -46,7 +88,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Create the MySQL user linked to the Firebase account.
     const user = await createUser(
       firebaseUid,
       displayName || null,
@@ -78,15 +119,7 @@ const getUserProfile = async (req, res) => {
     }
 
     return res.status(200).json({
-      user: {
-        userId: user.user_id,
-        displayName: user.display_name,
-        email: user.email,
-        profileImageUrl: user.profile_image_url,
-        bio: user.bio,
-        createdAt: user.created_at,
-        updatedAt: user.updated_at,
-      }
+      user: formatUserProfile(user),
     });
   } catch (error) {
     console.error('Error retrieving user profile:', error.message);
@@ -99,11 +132,16 @@ const getUserProfile = async (req, res) => {
 
 // Update supported profile fields for the authenticated Mosalinx user.
 const updateUserProfile = async (req, res) => {
-  // Profile pictures are managed exclusively through the authenticated avatar upload endpoint.
-  const allowedFields = ['displayName', 'bio'];
-  const requestedFields = Object.keys(req.body);
+  const body = req.body || {};
+  const allowedFields = [
+    'displayName',
+    'bio',
+    'birthdate',
+    'gender',
+    'pronouns',
+  ];
+  const requestedFields = Object.keys(body);
 
-  // Reject empty requests or attempts to modify protected/unsupported fields.
   if (requestedFields.length === 0) {
     return res.status(400).json({
       message: 'No profile updates provided'
@@ -120,9 +158,8 @@ const updateUserProfile = async (req, res) => {
     });
   }
 
-  const { displayName, bio } = req.body;
+  const { displayName, bio, birthdate, gender, pronouns } = body;
 
-  // Validate supported profile values before applying database changes.
   if (
     displayName !== undefined &&
     (typeof displayName !== 'string' ||
@@ -144,6 +181,64 @@ const updateUserProfile = async (req, res) => {
     });
   }
 
+  let normalizedBirthdate = birthdate;
+
+  if (birthdate !== undefined) {
+    if (birthdate === null || birthdate === '') {
+      normalizedBirthdate = null;
+    } else {
+      normalizedBirthdate =
+        typeof birthdate === 'string' ? birthdate.trim() : birthdate;
+
+      if (!isValidBirthdate(normalizedBirthdate)) {
+        return res.status(400).json({
+          message: 'Invalid birthdate'
+        });
+      }
+    }
+  }
+
+  let normalizedGender = gender;
+
+  if (gender !== undefined) {
+    if (gender === null || gender === '') {
+      normalizedGender = null;
+    } else if (
+      typeof gender !== 'string' ||
+      !GENDER_OPTIONS.includes(gender.trim())
+    ) {
+      return res.status(400).json({
+        message: 'Invalid gender'
+      });
+    } else {
+      normalizedGender = gender.trim();
+    }
+  }
+
+  let normalizedPronouns = pronouns;
+
+  if (pronouns !== undefined) {
+    if (pronouns === null || pronouns === '') {
+      normalizedPronouns = null;
+    } else if (typeof pronouns !== 'string') {
+      return res.status(400).json({
+        message: 'Invalid pronouns'
+      });
+    } else {
+      normalizedPronouns = pronouns.trim();
+
+      if (normalizedPronouns.length > 50) {
+        return res.status(400).json({
+          message: 'Invalid pronouns'
+        });
+      }
+
+      if (normalizedPronouns.length === 0) {
+        normalizedPronouns = null;
+      }
+    }
+  }
+
   try {
     const existingUser = await findUserByFirebaseUid(req.user.uid);
 
@@ -157,6 +252,9 @@ const updateUserProfile = async (req, res) => {
       displayName:
         displayName !== undefined ? displayName.trim() : undefined,
       bio,
+      birthdate: normalizedBirthdate,
+      gender: normalizedGender,
+      pronouns: normalizedPronouns,
     };
 
     await updateUserProfileByFirebaseUid(req.user.uid, updates);
@@ -165,15 +263,7 @@ const updateUserProfile = async (req, res) => {
 
     return res.status(200).json({
       message: 'Profile updated successfully',
-      user: {
-        userId: updatedUser.user_id,
-        displayName: updatedUser.display_name,
-        email: updatedUser.email,
-        profileImageUrl: updatedUser.profile_image_url,
-        bio: updatedUser.bio,
-        createdAt: updatedUser.created_at,
-        updatedAt: updatedUser.updated_at,
-      }
+      user: formatUserProfile(updatedUser),
     });
   } catch (error) {
     console.error('Error updating user profile:', error.message);

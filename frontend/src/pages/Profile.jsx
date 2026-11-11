@@ -40,9 +40,9 @@ function Profile() {
       firstName: firstName || '',
       lastName: lastNameParts.join(' '),
       email: userProfile.email ?? '',
-      birthdate: '',
-      gender: '',
-      pronouns: '',
+      birthdate: userProfile.birthdate ?? '',
+      gender: userProfile.gender ?? '',
+      pronouns: userProfile.pronouns ?? '',
       bio: userProfile.bio ?? '',
       avatarUrl: userProfile.profileImageUrl ?? null,
     }
@@ -220,13 +220,24 @@ function Profile() {
       const updates = {
         displayName,
         bio: draftProfile.bio || null,
+        birthdate: draftProfile.birthdate || null,
+        gender: draftProfile.gender || null,
+        pronouns: draftProfile.pronouns.trim() || null,
       }
 
       // Save profile fields, then upload the selected picture if one exists.
       let updatedProfile = await updateUserProfile(currentUser, updates)
 
       if (selectedAvatarFile) {
-        updatedProfile = await uploadUserAvatar(currentUser, selectedAvatarFile)
+        const avatarProfile = await uploadUserAvatar(currentUser, selectedAvatarFile)
+
+        updatedProfile = {
+          ...updatedProfile,
+          ...avatarProfile,
+          birthdate: updatedProfile.birthdate,
+          gender: updatedProfile.gender,
+          pronouns: updatedProfile.pronouns,
+        }
 
         // Retrieve the saved avatar, falling back to the selected image if needed.
         try {
@@ -250,6 +261,9 @@ function Profile() {
         firstName: (updatedProfile.displayName ?? '').trim().split(/\s+/)[0] || '',
         lastName: (updatedProfile.displayName ?? '').trim().split(/\s+/).slice(1).join(' '),
         bio: updatedProfile.bio ?? '',
+        birthdate: updatedProfile.birthdate ?? '',
+        gender: updatedProfile.gender ?? '',
+        pronouns: updatedProfile.pronouns ?? '',
       }))
 
       // Clear the pending upload after the picture is saved successfully.
