@@ -48,6 +48,7 @@ require.cache[databasePath] = {
 
 let resourceToReturn;
 let deleteRecordResult = true;
+let deleteRecordError = null;
 let updateCategoryResult = true;
 let storageExists = true;
 let activityLogError = null;
@@ -72,6 +73,11 @@ require.cache[resourceModelPath] = {
     deleteResourceRecord: async () => {
       calls.deleteRecord++;
       deletionOrder.push("database");
+
+      if (deleteRecordError) {
+        throw deleteRecordError;
+      }
+
       return deleteRecordResult;
     },
     isProjectMember: async () => true,
@@ -280,6 +286,7 @@ const reset = (resource) => {
 
   resourceToReturn = resource;
   deleteRecordResult = true;
+  deleteRecordError = null;
   updateCategoryResult = true;
   storageExists = true;
 };
@@ -394,7 +401,32 @@ test('ordinary resource delete returns 404 when the database record was not dele
   assert.equal(transactionCalls.commit, 0);
   assert.equal(transactionCalls.rollback, 1);
   assert.equal(transactionCalls.release, 1);
+});
 
+// A database deletion error must roll back without touching Firebase Storage.
+test('ordinary resource delete handles MySQL deletion failure', async () => {
+  reset(ordinaryResource());
+  deleteRecordError = new Error('Simulated MySQL deletion failure');
+
+  const res = makeResponse();
+
+  await controller.deleteResource(makeRequest(), res);
+
+  // The failed deletion must not be reported as successful.
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.body.message, 'Failed to delete resource.');
+
+  // Firebase Storage and activity logging must remain untouched.
+  assert.equal(calls.deleteRecord, 1);
+  assert.equal(calls.deleteStorage, 0);
+  assert.equal(calls.activityLog, 0);
+  assert.equal(activityLogs.length, 0);
+
+  // Verify the transaction rolls back and releases its connection.
+  assert.equal(transactionCalls.begin, 1);
+  assert.equal(transactionCalls.commit, 0);
+  assert.equal(transactionCalls.rollback, 1);
+  assert.equal(transactionCalls.release, 1);
 });
 
 // Verify that a Firebase Storage failure does not report deletion success.
