@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logo from '../assets/Mosalinx_logo.png'
+import AuthPanel from '../components/auth/AuthPanel.jsx'
 import './Home.css'
 
 const RINGS = [
@@ -11,22 +11,21 @@ const RINGS = [
 ]
 
 const CENTER = 510
-const FADE_DURATION = 400
 
+// The landing page doubles as the sign-in screen. The address decides what
+// is shown: "/" is the plain landing page, "/login" and "/signup" open the
+// matching form beside the logo. That keeps old links and the redirect for
+// signed-out visitors working.
 function Home() {
-  const [isExiting, setIsExiting] = useState(false)
+  const { pathname } = useLocation()
   const navigate = useNavigate()
 
-  function handleNavigate(e, path) {
-    e.preventDefault()
-    setIsExiting(true)
-    setTimeout(() => navigate(path), FADE_DURATION)
-  }
+  const mode = pathname === '/login' ? 'login' : pathname === '/signup' ? 'signup' : null
 
   return (
     <div className="landing-page">
       <div className="landing">
-        <div className={`landing-foreground ${isExiting ? 'fade-out' : ''}`}>
+        <div className="landing-foreground">
           <svg className="ring-field" viewBox="0 0 1020 1020" aria-hidden="true">
             {RINGS.map((ring, i) => {
               const rad = (ring.dotAngle * Math.PI) / 180
@@ -56,26 +55,26 @@ function Home() {
             })}
           </svg>
 
-          <div className="landing-content">
+          <div className={`landing-content${mode ? ' is-auth' : ''}`}>
             <img src={logo} alt="Mosalinx" className="landing-logo" />
 
-            <div className="landing-actions">
-              <Link
-                to="/signup"
-                className="btn btn-primary"
-                onClick={(e) => handleNavigate(e, '/signup')}
-              >
-                Sign up
-              </Link>
+            {mode ? (
+              <AuthPanel
+                mode={mode}
+                onModeChange={(next) => navigate(`/${next}`, { replace: true })}
+                onClose={() => navigate('/')}
+              />
+            ) : (
+              <div className="landing-actions">
+                <Link to="/signup" className="btn btn-primary">
+                  Sign up
+                </Link>
 
-              <Link
-                to="/login"
-                className="btn btn-ghost"
-                onClick={(e) => handleNavigate(e, '/login')}
-              >
-                Log in
-              </Link>
-            </div>
+                <Link to="/login" className="btn btn-login">
+                  Log in
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>

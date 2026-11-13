@@ -1,0 +1,154 @@
+/* Log in / Sign up card on the landing page. */
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px 30px 22px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  text-align: left;
+  /* The app allows light and dark browser themes, but this card is always
+     light, so its fields must be too (otherwise dark mode types white on white). */
+  color-scheme: light;
+  color: #1a1b1e;
+  animation: authFadeIn 0.35s ease both;
+}
+
+@keyframes authFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Segmented switch between the two forms. */
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 20px;
+  border-radius: 10px;
+  background: rgba(26, 27, 30, 0.08);
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #3a3d42;
+  font-family: 'Astronomus', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-tab:hover:not(.is-active) {
+  background: rgba(20, 187, 196, 0.18);
+}
+
+.auth-tab.is-active {
+  background: #1a1b1e;
+  color: #f5f5f5;
+}
+
+.auth-tab:focus-visible,
+.auth-back:focus-visible,
+.auth-input:focus-visible {
+  outline: 3px solid #0b6f75;
+  outline-offset: 2px;
+}
+
+.auth-title {
+  margin: 0 0 18px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #1a1b1e;
+  text-align: center;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-label {
+  margin: 14px 0 6px;
+  color: #3a3d42;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.auth-label:first-child {
+  margin-top: 0;
+}
+
+.auth-input {
+  padding: 11px 14px;
+  border: 1px solid #c9c9c9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1a1b1e;
+  font-size: 0.95rem;
+  transition: border-color 0.15s ease;
+}
+
+.auth-input:focus {
+  border-color: #1a1b1e;
+}
+
+.auth-input[aria-invalid='true'] {
+  border-color: #c0392b;
+}
+
+.auth-error {
+  margin: 14px 0 0;
+  color: #b3261e;
+  font-size: 0.85rem;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 22px;
+}
+
+.auth-submit:disabled {
+  cursor: not-allowed;
+}
+
+.auth-back {
+  display: block;
+  margin: 16px auto 0;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #3a3d42;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.auth-back:hover {
+  color: #000000;
+  text-decoration: underline;
+}
+
+@media (max-width: 500px) {
+  .auth-card {
+    padding: 22px 20px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card {
+    animation: none;
+  }
+}
