@@ -1,7 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
 import Home from './pages/Home.jsx'
-import Login from './pages/Login.jsx'
-import Signup from './pages/Signup.jsx'
 import Shell from './components/Shell.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Dashboard from './pages/Dashboard.jsx'
@@ -17,9 +15,11 @@ import TeamMembers from './pages/TeamMembers.jsx'
 function App() {
   return (
     <Routes>
+      {/* Log in and Sign up now live on the landing page; the address
+          decides which form Home shows. */}
       <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
+      <Route path="/login" element={<Home />} />
+      <Route path="/signup" element={<Home />} />
 
       <Route
         path="/dashboard"
