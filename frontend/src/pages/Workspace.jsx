@@ -4,6 +4,7 @@ import {
 } from '../services/workspacePostService'
 import { getProjectActivity } from '../services/activityService'
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useProject } from '../context/useProject'
 import { auth } from '../firebase'
 import {
@@ -1107,7 +1108,23 @@ function Workspace() {
   const [activeRibbonTab, setActiveRibbonTab] = useState('Home')
   const [explorerOpen, setExplorerOpen] = useState(true)
   const [feedOpen, setFeedOpen] = useState(false)
-  const [feedView, setFeedView] = useState('posts')
+  // Preserve the selected Project Feed tab in the URL.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const feedView = searchParams.get('tab') === 'activity' ? 'activity' : 'posts'
+
+  function setFeedView(view) {
+    setSearchParams((previousParams) => {
+      const nextParams = new URLSearchParams(previousParams)
+
+      if (view === 'activity') {
+        nextParams.set('tab', 'activity')
+      } else {
+        nextParams.delete('tab')
+      }
+
+      return nextParams
+    })
+  }
 
   // Workspace posts retrieved from the backend.
   const [posts, setPosts] = useState([])
