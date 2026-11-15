@@ -45,6 +45,9 @@ function Shell() {
   const navigate = useNavigate()
   const currentAppName = APP_NAMES[location.pathname] ?? 'Mosalinx'
 
+  // Keep Workspace within the viewport so its editor can scroll independently.
+  const isWorkspace = location.pathname === '/dashboard/workspace'
+
   const handleLogout = async () => {
     try {
       await logoutUser()
@@ -56,7 +59,7 @@ function Shell() {
 
   return (
     <ProjectProvider>
-      <div className="shell">
+      <div className={`shell${isWorkspace ? ' shell--workspace' : ''}`}>
         <header className="shell-topbar">
           <div className="shell-topbar-left">
             <button

@@ -1,7 +1,71 @@
 const { findUserByFirebaseUid } = require('../models/userModel');
 const { checkProjectPermission } = require('../utils/projectPermissions');
 const { findWorkspacePostById } = require('../models/workspacePostModel');
-const { createComment } = require('../models/commentModel');
+const {
+    createComment,
+    findCommentsByPostId,
+} = require('../models/commentModel');
+
+// Retrieve comments for an authorized workspace post.
+const getPostComments = async (req, res) => {
+    try {
+        const firebaseUid = req.user?.uid;
+
+        if (!firebaseUid) {
+            return res.status(401).json({
+                message: 'Authentication required.',
+            });
+        }
+
+        const user = await findUserByFirebaseUid(firebaseUid);
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'Mosalinx user not found.',
+            });
+        }
+
+        const postId = Number(req.params.postId);
+
+        if (!Number.isSafeInteger(postId) || postId <= 0) {
+            return res.status(400).json({
+                message: 'A valid postId is required.',
+            });
+        }
+
+        const existingPost = await findWorkspacePostById(postId);
+
+        if (!existingPost) {
+            return res.status(404).json({
+                message: 'Workspace post not found.',
+            });
+        }
+
+        const permission = await checkProjectPermission(
+            existingPost.project_id,
+            user.user_id,
+            ['owner', 'collaborator']
+        );
+
+        if (!permission.allowed) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
+
+        const comments = await findCommentsByPostId(postId);
+
+        return res.status(200).json({
+            comments,
+        });
+    } catch (error) {
+        console.error('Failed to retrieve post comments:', error);
+
+        return res.status(500).json({
+            message: 'Failed to retrieve comments.',
+        });
+    }
+};
 
 // Create a comment on an existing workspace post.
 const createPostComment = async (req, res) => {
@@ -14,7 +78,6 @@ const createPostComment = async (req, res) => {
             });
         }
 
-        // Find the Mosalinx user linked to Firebase.
         const user = await findUserByFirebaseUid(firebaseUid);
 
         if (!user) {
@@ -25,7 +88,6 @@ const createPostComment = async (req, res) => {
 
         const postId = Number(req.params.postId);
 
-        // Validate the post ID.
         if (!Number.isInteger(postId) || postId <= 0) {
             return res.status(400).json({
                 message: 'A valid postId is required.',
@@ -34,7 +96,6 @@ const createPostComment = async (req, res) => {
 
         const { commentContent } = req.body;
 
-        // Comment content is required.
         if (
             typeof commentContent !== 'string' ||
             !commentContent.trim()
@@ -44,7 +105,6 @@ const createPostComment = async (req, res) => {
             });
         }
 
-        // Find the post before creating the comment.
         const existingPost = await findWorkspacePostById(postId);
 
         if (!existingPost) {
@@ -53,18 +113,17 @@ const createPostComment = async (req, res) => {
             });
         }
 
-	// Check that the user belongs to the post's project.
-	const permission = await checkProjectPermission(
-	    existingPost.project_id,
-	    user.user_id,
-	    ['owner', 'collaborator']
-	);
+        const permission = await checkProjectPermission(
+            existingPost.project_id,
+            user.user_id,
+            ['owner', 'collaborator']
+        );
 
-	if (!permission.allowed) {
-	    return res.status(403).json({
-	        message: 'You are not a member of this project.',
-	    });
-	}
+        if (!permission.allowed) {
+            return res.status(403).json({
+                message: 'You are not a member of this project.',
+            });
+        }
 
         const comment = await createComment(
             postId,
@@ -85,5 +144,6 @@ const createPostComment = async (req, res) => {
 };
 
 module.exports = {
+    getPostComments,
     createPostComment,
 };

@@ -5,13 +5,17 @@
   max-width: 400px;
   padding: 28px 30px 22px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  /* Transparent smoked glass with a subtle silver edge. */
+  background: rgba(35, 39, 48, 0.48);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(220, 225, 235, 0.28);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   text-align: left;
-  /* The app allows light and dark browser themes, but this card is always
-     light, so its fields must be too (otherwise dark mode types white on white). */
+  /* Keep form controls in light mode for consistent input contrast
+   regardless of the browser's color scheme. */
   color-scheme: light;
-  color: #1a1b1e;
+  color: #f0f2f5;
   animation: authFadeIn 0.35s ease both;
 }
 
@@ -20,6 +24,7 @@
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -33,7 +38,7 @@
   padding: 4px;
   margin-bottom: 20px;
   border-radius: 10px;
-  background: rgba(26, 27, 30, 0.08);
+  background: rgba(15, 18, 24, 0.24);
 }
 
 .auth-tab {
@@ -42,7 +47,7 @@
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: #3a3d42;
+  color: #e0e4eb;
   font-family: 'Astronomus', sans-serif;
   font-size: 0.85rem;
   letter-spacing: 0.05em;
@@ -71,7 +76,7 @@
   margin: 0 0 18px;
   font-size: 1.4rem;
   font-weight: 700;
-  color: #1a1b1e;
+  color: #f5f6fa;
   text-align: center;
 }
 
@@ -82,7 +87,7 @@
 
 .auth-label {
   margin: 14px 0 6px;
-  color: #3a3d42;
+  color: #e0e4eb;
   font-size: 0.85rem;
   font-weight: 500;
 }
@@ -95,7 +100,7 @@
   padding: 11px 14px;
   border: 1px solid #c9c9c9;
   border-radius: 8px;
-  background: #ffffff;
+  background: #e7eefb;
   color: #1a1b1e;
   font-size: 0.95rem;
   transition: border-color 0.15s ease;
@@ -131,13 +136,13 @@
   border: none;
   border-radius: 6px;
   background: none;
-  color: #3a3d42;
+  color: #d5dbe3;
   font-size: 0.85rem;
   cursor: pointer;
 }
 
 .auth-back:hover {
-  color: #000000;
+  color: #ffffff;
   text-decoration: underline;
 }
 

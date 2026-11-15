@@ -6,137 +6,158 @@ import { API_BASE_URL } from "../config/api";
 
 const API_URL = `${API_BASE_URL}/api/projects`;
 
+// Keep each user's last selected project separate.
+const getProjectStorageKey = (uid) => `mosalinx.activeProject.${uid}`;
+
 export function ProjectProvider({ children }) {
-    const [projects, setProjects] = useState([]);
-    const [activeProject, setActiveProject] = useState(null);
-    const [loadingProjects, setLoadingProjects] = useState(true);
-    const [projectError, setProjectError] = useState("");
+  const [projects, setProjects] = useState([]);
+  const [activeProject, setActiveProject] = useState(null);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [projectError, setProjectError] = useState("");
 
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(
-            auth,
-            async (currentUser) => {
-                if (!currentUser) {
-                    setProjects([]);
-                    setActiveProject(null);
-                    setProjectError(
-                        "You must be signed in to view projects."
-                    );
-                    setLoadingProjects(false);
-                    return;
-                }
+  useEffect(() => {
+    let active = true;
 
-                try {
-                    setLoadingProjects(true);
-                    setProjectError("");
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      async (currentUser) => {
+        if (!currentUser) {
+          setProjects([]);
+          setActiveProject(null);
+          setProjectError("You must be signed in to view projects.");
+          setLoadingProjects(false);
+          return;
+        }
 
-                    // Get the Firebase authentication token.
-                    const token = await currentUser.getIdToken();
+        try {
+          setLoadingProjects(true);
+          setProjectError("");
 
-                    const response = await fetch(API_URL, {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    });
+          // Retrieve the authenticated user's accessible projects.
+          const token = await currentUser.getIdToken();
 
-                    const data = await response.json();
+          const response = await fetch(API_URL, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
 
-                    if (!response.ok) {
-                        throw new Error(
-                            data.message || "Failed to load projects."
-                        );
-                    }
+          const data = await response.json();
 
-                    const userProjects = data.projects || [];
+          if (!response.ok) {
+            throw new Error(data.message || "Failed to load projects.");
+          }
 
-                    setProjects(userProjects);
+          if (!active) return;
 
-                    // Use the first accessible project as the active project.
-                    setActiveProject(userProjects[0] || null);
-                } catch (error) {
-                    console.error("Failed to load projects:", error);
-                    setProjectError(
-                        error.message || "Failed to load projects."
-                    );
-                    setProjects([]);
-                    setActiveProject(null);
-                } finally {
-                    setLoadingProjects(false);
-                }
-            }
-        );
+          const userProjects = data.projects || [];
+          const storageKey = getProjectStorageKey(currentUser.uid);
+          const savedProjectId = localStorage.getItem(storageKey);
 
-        return () => unsubscribe();
-    }, []);
+          // Restore the saved project only if the user still has access.
+          const restoredProject = userProjects.find(
+            (project) => String(project.project_id) === savedProjectId
+          );
 
-        // Create a project and synchronize the shared project state.
-        const createProject = async ({ project_name, description }) => {
-            const currentUser = auth.currentUser;
+          setProjects(userProjects);
+          setActiveProject(restoredProject || userProjects[0] || null);
+        } catch (error) {
+          if (!active) return;
 
-            if (!currentUser) {
-                throw new Error("You must be signed in to create a project.");
-            }
-
-            // Retrieve the current Firebase authentication token.
-            const token = await currentUser.getIdToken();
-
-            // Submit the project details to the backend.
-            let response;
-
-            try {
-                response = await fetch(API_URL, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        project_name,
-                        description,
-                    }),
-                });
-            } catch {
-                throw new Error(
-                    "Unable to connect to the server. Please check your connection and try again."
-                );
-            }
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Failed to create project."
-                );
-            }
-
-            if (!data.project?.project_id) {
-                throw new Error(
-                    "The server did not return the created project."
-                );
-            }
-
-            // Add the persisted project and select it for the workspace.
-            setProjects((previousProjects) => [
-                ...previousProjects,
-                data.project,
-            ]);
-            setActiveProject(data.project);
-
-            return data.project;
-        };
-
-    return (
-        <ProjectContext.Provider
-            value={{
-                projects,
-                activeProject,
-                setActiveProject,
-                loadingProjects,
-                projectError,
-                createProject,
-            }}
-        >
-            {children}
-        </ProjectContext.Provider>
+          console.error("Failed to load projects:", error);
+          setProjectError(error.message || "Failed to load projects.");
+          setProjects([]);
+          setActiveProject(null);
+        } finally {
+          if (active) {
+            setLoadingProjects(false);
+          }
+        }
+      }
     );
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Persist project changes for the currently authenticated user.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+
+    if (!uid || loadingProjects || !activeProject?.project_id) return;
+
+    localStorage.setItem(
+      getProjectStorageKey(uid),
+      String(activeProject.project_id)
+    );
+  }, [activeProject, loadingProjects]);
+
+  // Create a project and synchronize the shared project state.
+  const createProject = async ({ project_name, description }) => {
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      throw new Error("You must be signed in to create a project.");
+    }
+
+    // Retrieve the current Firebase authentication token.
+    const token = await currentUser.getIdToken();
+
+    // Submit the project details to the backend.
+    let response;
+
+    try {
+      response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          project_name,
+          description,
+        }),
+      });
+    } catch {
+      throw new Error(
+        "Unable to connect to the server. Please check your connection and try again."
+      );
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to create project.");
+    }
+
+    if (!data.project?.project_id) {
+      throw new Error("The server did not return the created project.");
+    }
+
+    // Add the new project and select it immediately.
+    setProjects((previousProjects) => [
+      ...previousProjects,
+      data.project,
+    ]);
+    setActiveProject(data.project);
+
+    return data.project;
+  };
+
+  return (
+    <ProjectContext.Provider
+      value={{
+        projects,
+        activeProject,
+        setActiveProject,
+        loadingProjects,
+        projectError,
+        createProject,
+      }}
+    >
+      {children}
+    </ProjectContext.Provider>
+  );
 }
