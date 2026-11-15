@@ -12,6 +12,8 @@ import {
   effectiveFontSize,
 } from './tileConfig.js'
 import './DashboardTile.css'
+import { useProject } from '../../context/useProject.js'
+import { API_BASE_URL } from '../../config/api.js'
 
 // ---------- Small helpers ----------
 
@@ -30,23 +32,14 @@ function formatPostTime(timestamp) {
 }
 
 // Date-only strings ("2026-10-22") would otherwise be read as UTC and land
-// on the previous day for anyone west of Greenwich.
-function parseEventDate(value) {
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [y, m, d] = value.split('-').map(Number)
-    return new Date(y, m - 1, d)
-  }
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date
-}
+// Parse API datetime values using the same convention as the Calendar page.
+function parseCalendarDatetime(value) {
+  if (!value) return null
 
-function isToday(date) {
-  const now = new Date()
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  )
+  const normalized = String(value).replace(' ', 'T')
+  const date = new Date(normalized)
+
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 // ---------- Tile bodies: one per data type ----------
@@ -118,61 +111,151 @@ export function GraphBody({ config, source: provided }) {
   )
 }
 
+
 function CalendarBody() {
   const { currentUser } = useAuth()
+  const { activeProject, loadingProjects } = useProject()
+  const projectId = activeProject?.project_id
+
   const [state, setState] = useState({ status: 'loading', events: [] })
 
   useEffect(() => {
     let cancelled = false
 
-    async function load() {
+    async function loadEvents() {
+      if (loadingProjects) {
+        setState({ status: 'loading', events: [] })
+        return
+      }
+
+      if (!projectId || !currentUser) {
+        setState({ status: 'ready', events: [] })
+        return
+      }
+
+      setState({ status: 'loading', events: [] })
+
       try {
-        const now = new Date()
-        const token = await currentUser?.getIdToken?.()
+        const token = await currentUser.getIdToken()
+
         const response = await fetch(
-          `/api/calendar/events?year=${now.getFullYear()}&month=${now.getMonth() + 1}`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+          `${API_BASE_URL}/api/calendar-events/project/${projectId}`,
+          {
+            headers: token
+              ? { Authorization: `Bearer ${token}` }
+              : {},
+          }
         )
-        if (!response.ok) throw new Error('Request failed')
+
+        if (!response.ok) {
+          throw new Error('Request failed')
+        }
+
         const data = await response.json()
-        const events = (Array.isArray(data) ? data : [])
-          .map((event) => ({ title: event.title, date: parseEventDate(event.date) }))
-          .filter((event) => event.date && isToday(event.date))
-          .sort((a, b) => a.date - b.date)
-        if (!cancelled) setState({ status: 'ready', events })
+
+        const now = new Date()
+        const todayStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0, 0, 0, 0
+        )
+        const todayEnd = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23, 59, 59, 999
+        )
+
+        const events = (Array.isArray(data.events) ? data.events : [])
+          .map((event) => {
+            const start = parseCalendarDatetime(event.start_datetime)
+            const end = parseCalendarDatetime(
+              event.end_datetime || event.start_datetime
+            )
+
+            return {
+              title: event.event_title,
+              start,
+              end,
+            }
+          })
+          .filter(
+            (event) =>
+              event.start &&
+              event.end &&
+              event.start <= todayEnd &&
+              event.end >= todayStart
+          )
+          .sort((a, b) => a.start - b.start)
+
+        if (!cancelled) {
+          setState({ status: 'ready', events })
+        }
       } catch {
-        if (!cancelled) setState({ status: 'error', events: [] })
+        if (!cancelled) {
+          setState({ status: 'error', events: [] })
+        }
       }
     }
 
-    load()
+    loadEvents()
+
     return () => {
       cancelled = true
     }
-  }, [currentUser])
+  }, [currentUser, projectId, loadingProjects])
 
-  const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  const dateLabel = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  })
+
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
 
   return (
     <div className="tile-calendar">
       <p className="tile-calendar-date">{dateLabel}</p>
-      {state.status === 'loading' && <p className="tile-empty">Loading today&apos;s events…</p>}
-      {state.status === 'error' && <p className="tile-empty">Couldn&apos;t load events right now.</p>}
+
+      {state.status === 'loading' && (
+        <p className="tile-empty">Loading today's events...</p>
+      )}
+
+      {state.status === 'error' && (
+        <p className="tile-empty">Couldn't load events right now.</p>
+      )}
+
       {state.status === 'ready' && state.events.length === 0 && (
         <p className="tile-empty">Nothing scheduled today.</p>
       )}
+
       {state.status === 'ready' && state.events.length > 0 && (
         <ul className="tile-calendar-list">
           {state.events.map((event, index) => {
-            const hasTime = event.date.getHours() !== 0 || event.date.getMinutes() !== 0
+            const hasTime =
+              event.start.getHours() !== 0 ||
+              event.start.getMinutes() !== 0
+
+            const timeLabel =
+              event.start < todayStart
+                ? 'In progress'
+                : hasTime
+                  ? event.start.toLocaleTimeString(undefined, {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })
+                  : 'All day'
+
             return (
-              <li key={`${event.title}-${index}`}>
+              <li key={`${event.title}-${event.start.getTime()}-${index}`}>
                 <span className="tile-calendar-time">
-                  {hasTime
-                    ? event.date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-                    : 'All day'}
+                  {timeLabel}
                 </span>
-                <span className="tile-calendar-title">{event.title || 'Untitled event'}</span>
+                <span className="tile-calendar-title">
+                  {event.title || 'Untitled event'}
+                </span>
               </li>
             )
           })}
@@ -181,6 +264,7 @@ function CalendarBody() {
     </div>
   )
 }
+
 
 function PostBody({ config }) {
   if (!config.postId) return <p className="tile-empty">No post chosen. Use Edit to pick one.</p>
