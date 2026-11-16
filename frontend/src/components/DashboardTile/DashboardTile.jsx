@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth.js'
-import { getAnalyticsSource, getAnalyticsSources, getProjectPost, getProjectPosts } from '../../data/dashboardSources.js'
+import { getAnalyticsSource, getAnalyticsSources } from '../../data/dashboardSources.js'
 import {
   CELL,
   GAP,
@@ -243,9 +243,9 @@ function CalendarBody() {
                 ? 'In progress'
                 : hasTime
                   ? event.start.toLocaleTimeString(undefined, {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
                   : 'All day'
 
             return (
@@ -266,10 +266,25 @@ function CalendarBody() {
 }
 
 
-function PostBody({ config }) {
-  if (!config.postId) return <p className="tile-empty">No post chosen. Use Edit to pick one.</p>
-  const post = getProjectPost(config.postId)
-  if (!post) return <p className="tile-empty">That post is no longer available.</p>
+function PostBody({ config, projectPosts = [], postsLoading = false, postsError = '' }) {
+  if (postsLoading) {
+    return <p className="tile-empty">Loading project posts...</p>
+  }
+
+  if (postsError) {
+    return <p className="tile-empty">{postsError}</p>
+  }
+
+  if (!config.postId) {
+    return <p className="tile-empty">No post chosen. Use Edit to pick one.</p>
+  }
+
+  // Match saved selections regardless of whether post IDs are strings or numbers.
+  const post = projectPosts.find((item) => String(item.id) === String(config.postId))
+
+  if (!post) {
+    return <p className="tile-empty">That post is no longer available.</p>
+  }
 
   return (
     <article className="tile-post">
@@ -309,9 +324,8 @@ const BODIES = { text: TextBody, graph: GraphBody, calendar: CalendarBody, post:
 
 // ---------- Edit panel ----------
 
-function EditPanel({ tile, onChange, onConfirm }) {
+function EditPanel({ tile, onChange, onConfirm, projectPosts = [], postsLoading = false, postsError = '' }) {
   const sources = getAnalyticsSources()
-  const posts = getProjectPosts()
   const setConfig = (patch) => onChange({ config: { ...tile.config, ...patch } })
 
   return (
@@ -377,14 +391,18 @@ function EditPanel({ tile, onChange, onConfirm }) {
           <select
             value={tile.config.postId ?? ''}
             onChange={(event) => setConfig({ postId: event.target.value || null })}
+            disabled={postsLoading || Boolean(postsError)}
           >
-            <option value="">Choose a post…</option>
-            {posts.map((post) => (
+            <option value="">
+              {postsLoading ? 'Loading posts...' : postsError ? 'Unable to load posts' : 'Choose a post…'}
+            </option>
+            {!postsLoading && !postsError && projectPosts.map((post) => (
               <option key={post.id} value={post.id}>
                 {post.user} · {formatPostTime(post.timestamp)}
               </option>
             ))}
           </select>
+          {postsError && <span className="tile-edit-note">{postsError}</span>}
         </label>
       )}
 
@@ -499,6 +517,9 @@ const STEP = CELL + GAP
 // free (fitsSize / onDragMove / onDragEnd / onMoveBy all go through it).
 function DashboardTile({
   tile,
+  projectPosts,
+  postsLoading,
+  postsError,
   editing,
   fitsSize,
   onChange,
@@ -742,7 +763,23 @@ function DashboardTile({
       <div className="tile-inner">
         {tile.title && <h3 className="tile-title">{tile.title}</h3>}
         <div className="tile-body">
-          {editing ? <EditPanel tile={tile} onChange={onChange} onConfirm={handleConfirm} /> : <Body config={tile.config} />}
+          {editing ? (
+            <EditPanel
+              tile={tile}
+              onChange={onChange}
+              onConfirm={handleConfirm}
+              projectPosts={projectPosts}
+              postsLoading={postsLoading}
+              postsError={postsError}
+            />
+          ) : (
+            <Body
+              config={tile.config}
+              projectPosts={projectPosts}
+              postsLoading={postsLoading}
+              postsError={postsError}
+            />
+          )}
         </div>
       </div>
 

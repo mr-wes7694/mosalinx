@@ -5,6 +5,10 @@ import { fits, firstFree, nearestFree, resolveLayout } from '../components/Dashb
 import { CELL, GAP, TILE_TYPES, createTile, sanitizeTile } from '../components/DashboardTile/tileConfig.js'
 import './Dashboard.css'
 
+import { useAuth } from '../hooks/useAuth'
+import { getWorkspacePosts } from '../services/workspacePostService'
+import { deserializePostContent } from '../utils/postContent'
+
 // The dashboard is a cork bulletin board of tiles. Layout is saved in this
 // browser, per project, until there is a backend table for it.
 
@@ -113,7 +117,8 @@ function ProjectSwitcher({ projects, activeProject, loading, error, onSelect }) 
   )
 }
 
-function Board({ storageKey, switcher }) {
+function Board({ storageKey, switcher, projectId }) {
+  const { currentUser, loading: authLoading } = useAuth()
   const [tiles, setTiles] = useState(() => loadTiles(storageKey))
   const [editingId, setEditingId] = useState(null)
   // What the tile looked like when editing began, so Cancel can put it back
@@ -124,6 +129,9 @@ function Board({ storageKey, switcher }) {
   const [dragPreview, setDragPreview] = useState(null) // { id, x, y }
   const fieldRef = useRef(null)
   const addRef = useRef(null)
+  const [projectPosts, setProjectPosts] = useState([])
+  const [postsLoading, setPostsLoading] = useState(false)
+  const [postsError, setPostsError] = useState('')
 
   // Every tile with a valid spot for the current width. Saved spots are kept
   // whenever they are still free.
@@ -132,6 +140,55 @@ function Board({ storageKey, switcher }) {
   useEffect(() => {
     saveTiles(storageKey, tiles)
   }, [storageKey, tiles])
+
+  // Load real Workspace posts once for the active project.
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProjectPosts() {
+      if (authLoading) {
+        setPostsLoading(true)
+        return
+      }
+
+      if (!projectId || !currentUser) {
+        setProjectPosts([])
+        setPostsLoading(false)
+        setPostsError(currentUser ? '' : 'Please sign in to view project posts.')
+        return
+      }
+
+      setPostsLoading(true)
+      setPostsError('')
+
+      try {
+        const savedPosts = await getWorkspacePosts(currentUser, projectId)
+
+        if (cancelled) return
+
+        setProjectPosts(savedPosts.map((post) => ({
+          id: post.post_id,
+          projectId: post.project_id,
+          user: post.display_name || 'Unknown User',
+          lines: deserializePostContent(post.post_content || ''),
+          files: [],
+          timestamp: new Date(post.created_at).getTime(),
+        })))
+      } catch (error) {
+        if (cancelled) return
+        setProjectPosts([])
+        setPostsError(error.message || 'Unable to load Workspace posts.')
+      } finally {
+        if (!cancelled) setPostsLoading(false)
+      }
+    }
+
+    loadProjectPosts()
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, currentUser, authLoading])
 
   // Clicking anywhere outside the Add tile menu closes it.
   useEffect(() => {
@@ -311,6 +368,9 @@ function Board({ storageKey, switcher }) {
                 <DashboardTile
                   key={tile.id}
                   tile={tile}
+                  projectPosts={projectPosts}
+                  postsLoading={postsLoading}
+                  postsError={postsError}
                   editing={editingId === tile.id}
                   fitsSize={(w, h) => fitsSize(tile.id, w, h)}
                   onChange={(patch) => updateTile(tile.id, patch)}
@@ -351,7 +411,14 @@ function Dashboard() {
   )
 
   // Keyed by project so switching projects loads that project's board.
-  return <Board key={projectKey} storageKey={`mosalinx.dashboard.${projectKey}`} switcher={switcher} />
+  return (
+    <Board
+      key={projectKey}
+      storageKey={`mosalinx.dashboard.${projectKey}`}
+      switcher={switcher}
+      projectId={activeProject?.project_id}
+    />
+  )
 }
 
 export default Dashboard

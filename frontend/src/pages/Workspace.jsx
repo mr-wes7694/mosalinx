@@ -19,6 +19,11 @@ import {
   getUserAvatar,
   getUserProfile,
 } from '../services/profileService'
+import {
+  plainLines,
+  serializePostContent,
+  deserializePostContent,
+} from '../utils/postContent'
 
 // ---------- Workspace data / file-type definitions ----------
 // Workspace files are persisted through the backend and Firebase Storage.
@@ -220,57 +225,7 @@ const INITIAL_TREE = [
 
 const MAX_POST_IMAGES = 4
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-
-function plainLines(text) {
-  return text.split('\n').map((line) => [{ text: line }])
-}
-
-const RICH_POST_TYPE = 'mosalinx-rich-text'
-const RICH_POST_VERSION = 1
 const MAX_POST_CONTENT_BYTES = 65535
-
-// Convert formatted editor lines into a versioned storage string.
-function serializePostContent(lines) {
-  return JSON.stringify({
-    type: RICH_POST_TYPE,
-    version: RICH_POST_VERSION,
-    lines,
-  })
-}
-
-// Restore formatted posts while supporting existing plain-text content.
-function deserializePostContent(content) {
-  if (typeof content !== 'string') {
-    return plainLines('')
-  }
-
-  try {
-    const parsed = JSON.parse(content)
-
-    if (
-      parsed?.type === RICH_POST_TYPE &&
-      parsed.version === RICH_POST_VERSION &&
-      Array.isArray(parsed.lines) &&
-      parsed.lines.every((line) =>
-        Array.isArray(line) &&
-        line.every((run) =>
-          run !== null &&
-          typeof run === 'object' &&
-          typeof run.text === 'string' &&
-          ['bold', 'italic', 'underline'].every((key) =>
-            run[key] === undefined || typeof run[key] === 'boolean'
-          )
-        )
-      )
-    ) {
-      return parsed.lines
-    }
-  } catch {
-    // Existing plain-text posts are not JSON.
-  }
-
-  return plainLines(content)
-}
 
 // Check the actual UTF-8 size against MySQL's TEXT storage limit.
 function postContentFitsStorage(content) {
