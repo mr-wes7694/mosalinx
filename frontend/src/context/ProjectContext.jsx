@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { ProjectContext } from "./ProjectContextValue";
@@ -94,6 +94,52 @@ export function ProjectProvider({ children }) {
     );
   }, [activeProject, loadingProjects]);
 
+  // Refresh accessible projects without requiring the user to sign in again.
+  const refreshProjects = useCallback(async () => {
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      throw new Error("You must be signed in to refresh projects.");
+    }
+
+    const token = await currentUser.getIdToken();
+
+    let response;
+
+    try {
+      response = await fetch(API_URL, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch {
+      throw new Error(
+        "Unable to connect to the server. Please check your connection and try again."
+      );
+    }
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to refresh projects.");
+    }
+
+    const updatedProjects = data.projects || [];
+
+    setProjects(updatedProjects);
+    setActiveProject((previousProject) =>
+      updatedProjects.find(
+        (project) =>
+          String(project.project_id) ===
+          String(previousProject?.project_id)
+      ) || updatedProjects[0] || null
+    );
+
+    setProjectError("");
+
+    return updatedProjects;
+  }, []);
+
   // Create a project and synchronize the shared project state.
   const createProject = async ({ project_name, description }) => {
     const currentUser = auth.currentUser;
@@ -155,6 +201,7 @@ export function ProjectProvider({ children }) {
         loadingProjects,
         projectError,
         createProject,
+        refreshProjects,
       }}
     >
       {children}
