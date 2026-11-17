@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useProject } from '../context/useProject'
 import { useAuth } from '../hooks/useAuth.js'
 import { listProjectMembers } from '../services/projectMemberService.js'
+import { sendProjectInvitation } from '../services/invitationService.js'
 import TeamMemberList from '../components/TeamMemberList'
 import './TeamMembers.css'
 
@@ -17,8 +18,56 @@ function TeamMembers() {
   })
   const [refreshCount, setRefreshCount] = useState(0)
 
+  // Track the invitation form and submission feedback.
+  const [inviteeEmail, setInviteeEmail] = useState('')
+  const [invitationStatus, setInvitationStatus] = useState({
+    type: '',
+    message: ''
+  })
+  const [sendingInvitation, setSendingInvitation] = useState(false)
+
   const projectId = activeProject?.project_id
   const requestKey = `${currentUser?.uid || 'signed-out'}-${projectId || 'none'}-${refreshCount}`
+
+  // Send a project invitation to an existing Mosalinx user.
+  const handleSendInvitation = async (event) => {
+    event.preventDefault();
+
+    const email = inviteeEmail.trim();
+
+    if (
+      !email ||
+      !activeProject?.project_id ||
+      !currentUser ||
+      sendingInvitation
+    ) {
+      return;
+    }
+
+    setSendingInvitation(true);
+    setInvitationStatus({ type: '', message: '' });
+
+    try {
+      await sendProjectInvitation(
+        currentUser,
+        activeProject.project_id,
+        email
+      );
+
+      setInviteeEmail('');
+      setInvitationStatus({
+        type: 'success',
+        message: `Invitation sent successfully to ${email}.`
+      });
+    } catch (error) {
+      setInvitationStatus({
+        type: 'error',
+        message: error.message || 'Failed to send invitation.'
+      });
+    } finally {
+      setSendingInvitation(false);
+    }
+  };
 
   // Load members whenever the user or selected project changes.
   useEffect(() => {
@@ -118,6 +167,49 @@ function TeamMembers() {
           {loadingMembers ? 'Refreshing...' : 'Refresh members'}
         </button>
       </header>
+
+      {activeProject.role === 'owner' && (
+        <form
+          className="team-members-invite-form"
+          onSubmit={handleSendInvitation}
+        >
+          <h2>Invite Collaborator</h2>
+          <p>
+            Invite an existing Mosalinx user to collaborate on this project.
+          </p>
+
+          <div className="team-members-invite-controls">
+            <input
+              type="email"
+              value={inviteeEmail}
+              onChange={(event) => {
+                setInviteeEmail(event.target.value);
+                setInvitationStatus({ type: '', message: '' });
+              }}
+              placeholder="Enter collaborator's email"
+              aria-label="Collaborator email address"
+              required
+              disabled={sendingInvitation}
+            />
+
+            <button
+              type="submit"
+              disabled={sendingInvitation || !inviteeEmail.trim()}
+            >
+              {sendingInvitation ? 'Sending...' : 'Send Invitation'}
+            </button>
+          </div>
+
+          {invitationStatus.message && (
+            <p
+              className={`team-members-invite-${invitationStatus.type}`}
+              role={invitationStatus.type === 'error' ? 'alert' : 'status'}
+            >
+              {invitationStatus.message}
+            </p>
+          )}
+        </form>
+      )}
 
       <TeamMemberList
         members={members}

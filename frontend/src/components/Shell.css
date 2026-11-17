@@ -86,6 +86,63 @@
   color: #000000;
 }
 
+/* Highlight the profile button when invitations are waiting. */
+.shell-profile .shell-icon-btn.has-invitations {
+  border-color: #14bbc4;
+  box-shadow: 0 0 0 3px rgba(20, 187, 196, 0.4);
+  animation: invitation-profile-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes invitation-profile-pulse {
+
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(20, 187, 196, 0.35),
+      0 0 8px rgba(20, 187, 196, 0.3);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 6px rgba(20, 187, 196, 0.45),
+      0 0 22px rgba(20, 187, 196, 0.65);
+  }
+}
+
+/* Illuminate the profile emblem when invitations are pending. */
+.shell-profile .shell-icon-btn.has-invitations svg {
+  animation: invitation-icon-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes invitation-icon-glow {
+
+  0%,
+  100% {
+    stroke: #ffffff;
+    filter: drop-shadow(0 0 2px rgba(20, 187, 196, 0.3));
+  }
+
+  50% {
+    stroke: #7cffff;
+    filter:
+      drop-shadow(0 0 4px rgba(20, 187, 196, 0.9)) drop-shadow(0 0 8px rgba(20, 187, 196, 0.6));
+  }
+}
+
+/* Keep the notification visible without animation when requested. */
+@media (prefers-reduced-motion: reduce) {
+  .shell-profile .shell-icon-btn.has-invitations {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(20, 187, 196, 0.35);
+  }
+
+  .shell-profile .shell-icon-btn.has-invitations svg {
+    animation: none;
+    stroke: #14bbc4;
+    filter: none;
+  }
+}
+
 .shell-profile-menu {
   position: absolute;
   top: calc(100% + 10px);
@@ -123,6 +180,117 @@
   font-family: monospace;
   font-size: 0.8rem;
   color: #555;
+}
+
+/* Display pending invitations within the profile menu. */
+.shell-profile-invitations {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 4px 0 8px;
+  padding: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  background: #f5f7f8;
+  color: #1a1b1e;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.shell-profile-invitations:hover {
+  background: #dff5f5;
+}
+
+.shell-profile-invitations:focus-visible {
+  outline: 2px solid #14bbc4;
+  outline-offset: 2px;
+}
+
+.shell-invitation-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 12px;
+  background: #14bbc4;
+  color: #000000;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* Display invitation details within the account dropdown. */
+.shell-invitations-panel {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #f5f7f8;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+}
+
+.shell-invitations-panel>p {
+  margin: 0;
+  color: #555;
+  font-size: 0.85rem;
+}
+
+.shell-invitation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.shell-invitation-item:first-child {
+  padding-top: 0;
+}
+
+.shell-invitation-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.shell-invitation-item strong {
+  color: #1a1b1e;
+  font-size: 0.88rem;
+}
+
+.shell-invitation-item span {
+  color: #555;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.shell-invitation-accept {
+  padding: 9px 12px;
+  background: #397e79;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.shell-invitation-accept:hover:not(:disabled) {
+  background: #48958e;
+}
+
+.shell-invitation-accept:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.shell-invitations-error {
+  color: #c0392b !important;
 }
 
 .shell-profile-edit {
